@@ -51,5 +51,11 @@ def mask_image(fn):
         img = img.astype(np.uint8)
 
         mask = Image.fromarray(img)
+
+        save_paths = os.path.split(sample['name'])
+        if len(save_paths) > 1:
+            parent_dir = os.path.join(*save_paths[:-1])
+            os.makedirs(os.path.join(save_dir, parent_dir), exist_ok=True)
+
         mask.save(os.path.join(save_dir, sample['name'] + '.png'))
         return mask

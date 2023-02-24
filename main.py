@@ -13,7 +13,10 @@ img_dir_hr = 'images'
 mask_dir = 'results'
 
 # img_fn = 'PXL_20230205_150355105'
-img_fn = 'PXL_20230205_150409042'
+#img_fn = 'PXL_20230205_150409042'
+#img_fn = 'PXL_20230205_150413474'
+img_fn = 'PXL_20230205_150355105'
+
 input_img_fn = f'{img_dir}/{img_fn}.jpg'
 # input_img_fn = f'{img_dir_hr}/{img_fn}.jpg'
 input_img = cv2.imread(input_img_fn)
@@ -25,17 +28,19 @@ hr_image = cv2.imread(f'{img_dir_hr}/{img_fn}.jpg')
 scale_x = hr_image.shape[0] / input_img.shape[0]
 scale_y = hr_image.shape[1] / input_img.shape[1]
 
-use_result = True
+use_result = False
 
 if use_result:
-    mask = cv2.imread(f'{mask_dir}/{img_fn}.png')
+    mask = cv2.imread(f'{mask_dir}/{img_dir}/{img_fn}.png')
 else:
     mask = mask_image(input_img_fn)
 
     mask = np.array(mask)
     mask = cv2.cvtColor(mask, cv2.COLOR_RGB2BGR)
 
-mask = cv2.erode(mask, np.ones((5, 5)))
+# mask = cv2.erode(mask, np.ones((3, 3)))
+# mask = cv2.dilate(mask, np.ones((5, 5)))
+mask = cv2.erode(mask, np.ones((3, 3)))
 
 edges = cv2.Canny(mask, 0, 250)
 contours, hierarchy = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -148,6 +153,37 @@ for card in cards:
     # Apply the perspective transform to the original image
     flat_image = cv2.warpPerspective(hr_image, M, (w, h))
 
+    # cimg = cv2.Canny(flat_image, 0, 250)
+    # Setup SimpleBlobDetector parameters.
+    # params = cv2.SimpleBlobDetector_Params()
+    #
+    # # Change thresholds
+    # params.minThreshold = 10
+    # params.maxThreshold = 200
+    #
+    # # Filter by Area.
+    # params.filterByArea = True
+    # params.minArea = 1500
+    #
+    # # Filter by Circularity
+    # params.filterByCircularity = True
+    # params.minCircularity = 0.1
+    #
+    # # Filter by Convexity
+    # params.filterByConvexity = True
+    # params.minConvexity = 0.87
+    #
+    # # Filter by Inertia
+    # params.filterByInertia = True
+    # params.minInertiaRatio = 0.01
+    #
+    # # Set up the detector with default parameters.
+    # detector = cv2.SimpleBlobDetector_create(params)
+    # keypoints = detector.detect(flat_image)
+    #
+    # im_with_keypoints = cv2.drawKeypoints(flat_image, keypoints, np.array([]), (0, 0, 255),
+    #                                       cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
+
     card_images.append(flat_image)
     # cv2.imshow(f'unwrapped_{card}', flat_image)
 
@@ -155,28 +191,106 @@ card_images = [cimg[card_border:card_height - card_border, card_border:card_widt
                card_images]
 
 for cimg in card_images:
-    card = {
-        'col': 'green',
-        'shape': 'rect',
-        'cnt': 1
-    }
+    card = dict()
+    # {
+    #     'col': 'green',
+    #     'shape': 'rect',
+    #     'fill': 'empty',
+    #     'cnt': 1,
+    # }
 
-    slice_center = cimg[:, cimg.shape[1]//2, 0]
+    # converting image into grayscale image
+    gray = cv2.cvtColor(cimg, cv2.COLOR_BGR2GRAY)
 
-    plt.plot(np.diff(np.convolve(slice_center, np.ones(30))))
-    plt.show()
+    # setting threshold of gray image
+    _, threshold = cv2.threshold(gray, 170, 255, cv2.THRESH_BINARY_INV)
 
-    #cimg = cv2.medianBlur(cimg, 3)
-    #card_edges = cv2.Canny(cimg, 0, 250)
-    #contours, hierarchy = cv2.findContours(card_edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    # using a findContours() function
+    contours, _ = cv2.findContours(
+        threshold, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-    #cv2.drawContours(cimg, contours, -1, (255, 255, 0))
+    total_polys = 0
+
+    lst_intensities = []
+    fill_intensities = []
+
+    # list for storing names of shapes
+    for contour in contours:
+        ## Determine color of contour
+        # Create a mask image that contains the contour filled in
+        mimg = np.zeros_like(cimg)
+        cv2.drawContours(mimg, [contour], -1, color=255, thickness=-1)
+        pts = np.where(mimg == 255)
+        lst_intensities.extend(cimg[pts[0], pts[1]])
+
+        ## Determine fill shade
+        mimg = np.zeros_like(cimg)
+        cv2.fillPoly(mimg, [contour], color=255)
+        cv2.drawContours(mimg, [contour], -1, color=0, thickness=5) # remove border
+        pts = np.where(mimg == 255)
+        fill_intensities.extend(cimg[pts[0], pts[1]])
+
+        ## Determine Shape
+        # cv2.approxPloyDP() function to approximate the shape
+        approx = cv2.approxPolyDP(
+            contour, 0.003 * cv2.arcLength(contour, True), True)
+
+        # using drawContours() function
+        #cv2.drawContours(cimg, [approx], 0, (0, 0, 255), 2)
+
+        total_polys += len(approx)
+
+    card['cnt'] = len(contours)
+
+    min_col = np.min(lst_intensities, axis=0)
+    col_chann = np.argmax(min_col)
+    if col_chann == 2:  # Red
+        card['col'] = 'red'
+    elif col_chann == 1:  # Green
+        card['col'] = 'green'
+    else:  # Blue
+        # can still be green. check contrast
+        blue_over_green = min_col[0] - min_col[1]
+        if blue_over_green > 20:
+            card['col'] = 'purple'
+        else:
+            card['col'] = 'green'
+
+    avg_fill = np.linalg.norm(np.mean(fill_intensities, axis=0))
+    if avg_fill < 250:
+        card['fill'] = 'filled'
+    elif avg_fill < 340:
+        card['fill'] = 'dotted'
+    else:
+        card['fill'] = 'empty'
+    #card['avg_fill'] = avg_fill
+
+    avg_polys = total_polys / len(contours)
+
+    if avg_polys < 10:
+        card['shape'] = 'rect'
+    elif avg_polys < 22:
+        card['shape'] = 'ellipse'
+    else:
+        card['shape'] = 'squiggely'
+
+    # slice_center = cimg[:, cimg.shape[1]//2, 0]
+
+    # plt.plot(np.diff(np.convolve(slice_center, np.ones(30))))
+    # plt.show()
+
+    # cimg = cv2.medianBlur(cimg, 3)
+    # card_edges = cv2.Canny(cimg, 0, 250)
+    # contours, hierarchy = cv2.findContours(card_edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    # cv2.drawContours(cimg, contours, -1, (255, 255, 0))
 
     for i, k in enumerate(card.keys()):
         cv2.putText(cimg, f'{k}={card[k]}', [10, 20 + i * 20], fontFace=cv2.FONT_HERSHEY_PLAIN, fontScale=1,
                     color=(0, 0, 0))
 
 # Load the first image to get the dimensions
+# img_height, img_width = card_images[0].shape
 img_height, img_width, _ = card_images[0].shape
 
 # Determine the number of rows and columns in the grid
@@ -187,6 +301,7 @@ grid_cols = 2
 grid_height = img_height * grid_cols
 grid_width = img_width * grid_rows
 grid_image = np.zeros((grid_height, grid_width, 3), dtype=np.uint8)
+# grid_image = np.zeros((grid_height, grid_width), dtype=np.uint8)
 
 # Fill the grid with the images
 for i, img in enumerate(card_images[:12]):
@@ -197,14 +312,13 @@ for i, img in enumerate(card_images[:12]):
     # print(col*img_width)
     # print(col*img_width+img_width)
 
-    #edges_grid = cv2.Canny(img, 0, 250)
-    #edges_grid = np.stack([edges_grid, edges_grid, edges_grid], axis=-1)
+    # edges_grid = cv2.Canny(img, 0, 250)
+    # edges_grid = np.stack([edges_grid, edges_grid, edges_grid], axis=-1)
 
-    #contours, hierarchy = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    # contours, hierarchy = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-    #grid_image[col * img_height:col * img_height + img_height, row * img_width:row * img_width + img_width] = img
+    # grid_image[col * img_height:col * img_height + img_height, row * img_width:row * img_width + img_width] = img
     grid_image[col * img_height:col * img_height + img_height, row * img_width:row * img_width + img_width] = img
-
 
 # Show the grid
 cv2.imshow('Grid', grid_image)
