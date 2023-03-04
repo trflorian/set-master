@@ -243,8 +243,8 @@ def extract_card_properties(card_images, card_size):
                 cY = 0
 
             cf = area / card_area
-            if cf < 0.08 or cf > 0.2 or cY < 0.2 or cY > 0.8 or cX < 0.4 or cX > 0.6:
-                # print(f'skipping shape on card with area: {cf:.4f}')
+            if cf < 0.07 or cf > 0.3 or cY < 0.1 or cY > 0.9 or cX < 0.1 or cX > 0.9:
+                print(f'skipping shape on card with area: {cf:.4f} {cX=:.2f} {cY=:.2f}')
                 continue
 
             shape_cnt += 1
@@ -299,12 +299,13 @@ def extract_card_properties(card_images, card_size):
 
         if len(fill_intensities) == 0:
             avg_fill = 0
+            avg_fill = 0
             min_fill = 0
         else:
             avg_fill = np.mean(np.linalg.norm(fill_intensities, axis=1))
             min_fill = np.min(np.linalg.norm(fill_intensities, axis=1))
         diff_fill = avg_fill - min_fill
-        if diff_fill > 100:
+        if diff_fill > 80:
             card['fill'] = 'dotted'
         elif avg_fill < 250:
             card['fill'] = 'filled'
@@ -438,11 +439,14 @@ def draw_sets(card_images, sets):
 
 
 def main():
-    img_fn = 'PXL_20230205_150355105'
-    # img_fn = 'PXL_20230205_150409042'
-    # img_fn = 'PXL_20230205_150413474'
-    # img_fn = 'PXL_20230205_150348842'
-    # img_fn = 'PXL_20230205_150345491.MP'
+    #img_fn = 'PXL_20230205_150355105'
+    #img_fn = 'PXL_20230205_150409042'
+    #img_fn = 'PXL_20230205_150413474'
+    #img_fn = 'PXL_20230205_150348842'
+    #img_fn = 'PXL_20230205_150345491.MP'
+    img_fn = 'signal-2023-03-04-114806'
+    #img_fn = 'signal-2023-03-04-114803'
+    #img_fn = 'signal-2023-03-04-114803_edit'
 
     input_image_hr, input_image_lr = load_input_image(img_fn, resize_lr=(500, 500))
 
