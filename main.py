@@ -272,7 +272,7 @@ def extract_card_properties(card_images, card_size):
 
             # using drawContours() function
             # cv2.drawContours(cimg, [convexHull], 0, (0, 0, 255), 2)
-            cv2.drawContours(cimg, [approx], 0, (0, 0, 255), 2)
+            #cv2.drawContours(cimg, [approx], 0, (0, 0, 255), 2)
 
             convex_polys += len(convexHull)
             total_polys += len(approx)
@@ -393,8 +393,10 @@ def find_sets(card_properties):
                 ind = c[0]
                 x = ind // 2
                 y = ind % 2
-                print(f'X={x+1} Y={y+1} PROPS={list(c[1].values())}')
-            sets.append(three_cards)
+                print(f'X={x + 1} Y={y + 1} PROPS={list(c[1].values())}')
+
+            # append index
+            sets.append([c[0] for c in three_cards])
 
     print(f'Found {len(sets)} sets!')
 
@@ -416,6 +418,23 @@ def check_set(three_cards):
         if unique_props == 2:
             return False
     return True
+
+
+def draw_sets(card_images, sets):
+
+    colors = ['#5D9E5C', '#F7B1E2', '#E7D782', '#79ABD7', '#8E276F']
+
+    def hex_to_rgb(hex_code):
+        hex_code = hex_code.lstrip('#')
+        return [int(hex_code[i:i + 2], 16) for i in (0, 2, 4)]
+
+    for i, (card_set, col) in enumerate(zip(sets, colors)):
+        print(i, col)
+
+        for si in card_set:
+            cv2.circle(card_images[si], (20 + 30*i, card_images[si].shape[0]-20), 10, hex_to_rgb(col), -1)
+
+    return card_images
 
 
 def main():
@@ -454,6 +473,8 @@ def main():
     )
 
     sets = find_sets(card_properties)
+
+    card_images = draw_sets(card_images, sets)
 
     card_grid = create_card_grid(
         card_images=card_images,
