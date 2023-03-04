@@ -3,14 +3,14 @@ import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 
-from lib.optim import *
-from lib.modules.layers import *
-from lib.modules.context_module import *
-from lib.modules.attention_module import *
-from lib.modules.decoder_module import *
+from inspyrenet.lib.optim import *
+from inspyrenet.lib.modules.layers import *
+from inspyrenet.lib.modules.context_module import *
+from inspyrenet.lib.modules.attention_module import *
+from inspyrenet.lib.modules.decoder_module import *
 
-from lib.backbones.Res2Net_v1b import res2net50_v1b_26w_4s
-from lib.backbones.SwinTransformer import SwinB
+from inspyrenet.lib.backbones.Res2Net_v1b import res2net50_v1b_26w_4s
+from inspyrenet.lib.backbones.SwinTransformer import SwinB
 
 class InSPyReNet(nn.Module):
     def __init__(self, backbone, in_channels, depth=64, base_size=[384, 384], threshold=512, **kwargs):

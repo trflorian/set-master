@@ -6,8 +6,8 @@ from torch.nn.parameter import Parameter
 from operator import xor
 from typing import Optional
 
-from lib.modules.layers import *
-from utils.misc import *
+from inspyrenet.lib.modules.layers import *
+from inspyrenet.utils.misc import *
 class SICA(nn.Module):
     def __init__(self, in_channel, out_channel=1, depth=64, base_size=None, stage=None, lmap_in=False):
         super(SICA, self).__init__()

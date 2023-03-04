@@ -65,7 +65,7 @@ Train:
         warmup_iteration: 12000
     Checkpoint:
         checkpoint_epoch: 1
-        checkpoint_dir: "snapshots/Plus_Ultra_LR"
+        checkpoint_dir: "inspyrenet/snapshots/Plus_Ultra_LR"
     Debug:
         keys: ['saliency', 'laplacian']
     
@@ -75,8 +75,10 @@ Test:
         root: "data/Test_Dataset"
         sets:  ['DUTS-TE', 'DUT-OMRON', 'ECSSD', 'HKU-IS', 'PASCAL-S', 'DAVIS-S', 'HRSOD-TE', 'UHRSD-TE']
         transforms:
-            dynamic_resize:
-                L: 1280
+#            dynamic_resize:
+#                L: 1280
+            static_resize:
+                size: [384, 384]
             tonumpy: NULL
             normalize: 
                 mean: [0.485, 0.456, 0.406]
@@ -86,11 +88,11 @@ Test:
         num_workers: 8
         pin_memory: True
     Checkpoint:
-        checkpoint_dir: "snapshots/Plus_Ultra_LR"
+        checkpoint_dir: "inspyrenet/snapshots/Plus_Ultra_LR"
 
 Eval:
     gt_root: "data/Test_Dataset"
-    pred_root: "snapshots/Plus_Ultra_LR"
+    pred_root: "inspyrenet/snapshots/Plus_Ultra_LR"
     result_path: "results"
     datasets: ['DUTS-TE', 'DUT-OMRON', 'ECSSD', 'HKU-IS', 'PASCAL-S', 'DAVIS-S', 'HRSOD-TE', 'UHRSD-TE']
     metrics: ['Sm', 'mae', 'adpEm', 'maxEm', 'avgEm', 'adpFm', 'maxFm', 'avgFm', 'wFm', 'mBA']

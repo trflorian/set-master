@@ -12,7 +12,7 @@ filepath = os.path.split(__file__)[0]
 repopath = os.path.split(filepath)[0]
 sys.path.append(repopath)
 
-from utils.misc import *
+from ..utils.misc import *
         
 class static_resize:
     # Resize for training

@@ -13,8 +13,8 @@ filepath = os.path.split(__file__)[0]
 repopath = os.path.split(filepath)[0]
 sys.path.append(repopath)
 
-from data.custom_transforms import *
-from utils.misc import *
+from .custom_transforms import *
+from ..utils.misc import *
 
 Image.MAX_IMAGE_PIXELS = None
 

@@ -20,11 +20,6 @@ def load_input_image(image_name: str, resize_lr):
 
 
 def create_mask(image):
-    # TODO remove
-    #mask = cv2.imread(f'{mask_dir}/{IMG_DIR}_500x500/{img_fn}.png')
-    #return mask
-
-    # TODO
     return np.array(mask_image(image))
 
 
