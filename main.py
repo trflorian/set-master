@@ -12,6 +12,14 @@ IMG_DIR = 'images'
 CARD_WIDTH = 200
 CARD_HEIGHT = 350
 
+SET_COLORS = [
+    (255, 0, 0),
+    (255, 255, 0),
+    (0, 255, 0),
+    (0, 255, 255),
+    (0, 0, 255),
+]
+
 
 def load_input_image(image_name: str, resize_lr):
     image_fn = f'{IMG_DIR}/{image_name}.jpg'
@@ -23,13 +31,24 @@ def load_input_image(image_name: str, resize_lr):
 
 
 def create_mask(image):
-    return np.array(mask_image(image))
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    _, mask = cv2.threshold(gray, 150, 255, cv2.THRESH_BINARY)
+
+    mask = cv2.erode(mask, np.ones((3, 3)))
+    mask = cv2.dilate(mask, np.ones((3, 3)))
+
+    # cv2.imshow('thresh mask', mask)
+    # cv2.waitKey()
+
+    return mask
+
+    # mask = np.array(mask_image(image))
+    # # Grayscale mask
+    # mask = cv2.cvtColor(mask, cv2.COLOR_BGR2GRAY)
+    # return mask
 
 
 def pre_process_mask(mask):
-    # Grayscale mask
-    mask = cv2.cvtColor(mask, cv2.COLOR_BGR2GRAY)
-
     # Shrink mask bounds
     mask = cv2.erode(mask, np.ones((3, 3)))
 
@@ -50,7 +69,7 @@ def extract_contours_from_mask(mask):
     return contours
 
 
-def cards_from_contours(contours):
+def cards_from_contours(contours, img_size):
     all_cards = []
 
     for cont in contours:
@@ -77,9 +96,9 @@ def cards_from_contours(contours):
         print(all_cards[0].shape)
 
         # calculate the average x and y coordinates of all contours
-        average_x = np.mean([c[:, 0, 0] for c in all_cards], axis=0)
-        average_y = np.mean([c[:, 0, 1] for c in all_cards], axis=0)
-        average = np.stack((average_x, average_y), axis=1)
+        average_x = img_size[0] / 2  # np.mean([c[:, 0, 0] for c in all_cards], axis=0)
+        average_y = img_size[1] / 2  # np.mean([c[:, 0, 1] for c in all_cards], axis=0)
+        average = np.array([average_x, average_y]) #np.stack((average_x, average_y), axis=1)
 
         distances = []
         for card in all_cards:
@@ -252,7 +271,7 @@ def extract_card_properties(card_images, card_size):
             ## Determine color of contour
             # Create a mask image that contains the contour filled in
             mimg = np.zeros_like(cimg)
-            cv2.drawContours(mimg, [contour], -1, color=255, thickness=-1)
+            cv2.drawContours(mimg, [contour], -1, color=255, thickness=2)
             pts = np.where(mimg == 255)
             lst_intensities.extend(cimg[pts[0], pts[1]])
 
@@ -272,7 +291,7 @@ def extract_card_properties(card_images, card_size):
 
             # using drawContours() function
             # cv2.drawContours(cimg, [convexHull], 0, (0, 0, 255), 2)
-            #cv2.drawContours(cimg, [approx], 0, (0, 0, 255), 2)
+            # cv2.drawContours(cimg, [approx], 0, (0, 0, 255), 2)
 
             convex_polys += len(convexHull)
             total_polys += len(approx)
@@ -280,25 +299,46 @@ def extract_card_properties(card_images, card_size):
         card['cnt'] = shape_cnt
 
         if len(lst_intensities) > 0:
-            min_col = np.min(lst_intensities, axis=0)
+            min_col = np.mean(lst_intensities, axis=0)
         else:
-            min_col = [0, 0, 0]
+            min_col = np.array([0, 0, 0])
 
         col_chann = np.argmax(min_col)
-        if col_chann == 2:  # Red
-            card['col'] = 'red'
-        elif col_chann == 1:  # Green
-            card['col'] = 'green'
-        else:  # Blue
-            # can still be green. check contrast
-            blue_over_green = min_col[0] - min_col[1]
-            if blue_over_green > 20:
+
+        card['chan'] = min_col.astype(int)
+        card['col_chann'] = col_chann
+
+        if col_chann == 0:  # Blue. Can be green or purple
+            if min_col[1] - min_col[2] > 40:
+                card['col'] = 'green'
+            else:
+                card['col'] = 'purple'
+        elif col_chann == 2:
+            if min_col[2] - min_col[0] > 3:
+                card['col'] = 'red'
+            else:
+                card['col'] = 'purple'
+        else:
+            if min_col[1] - min_col[2] > 20:
+                card['col'] = 'green'
+            elif min_col[0] - min_col[2] > 20:
                 card['col'] = 'purple'
             else:
-                card['col'] = 'green'
+                card['col'] = 'red'
+
+        # if col_chann == 1:  # Green
+        #     card['col'] = 'green'
+        # else:  # Blue
+        #     # can still be green. check contrast
+        #     blue_over_green = min_col[0] - min_col[1]
+        #     if red_over_purple > 20:
+        #         card['col'] = 'red'
+        #     elif blue_over_green > 20:
+        #         card['col'] = 'purple'
+        #     else:
+        #         card['col'] = 'green'
 
         if len(fill_intensities) == 0:
-            avg_fill = 0
             avg_fill = 0
             min_fill = 0
         else:
@@ -422,7 +462,6 @@ def check_set(three_cards):
 
 
 def draw_sets(card_images, sets):
-
     colors = ['#5D9E5C', '#F7B1E2', '#E7D782', '#79ABD7', '#8E276F']
 
     def hex_to_rgb(hex_code):
@@ -433,22 +472,26 @@ def draw_sets(card_images, sets):
         print(i, col)
 
         for si in card_set:
-            cv2.circle(card_images[si], (20 + 30*i, card_images[si].shape[0]-20), 10, hex_to_rgb(col), -1)
+            cv2.circle(card_images[si], (20 + 30 * i, card_images[si].shape[0] - 20), 10, hex_to_rgb(col), -1)
 
     return card_images
 
 
 def main():
-    #img_fn = 'PXL_20230205_150355105'
-    #img_fn = 'PXL_20230205_150409042'
-    #img_fn = 'PXL_20230205_150413474'
-    #img_fn = 'PXL_20230205_150348842'
-    #img_fn = 'PXL_20230205_150345491.MP'
-    img_fn = 'signal-2023-03-04-114806'
-    #img_fn = 'signal-2023-03-04-114803'
-    #img_fn = 'signal-2023-03-04-114803_edit'
+    img_fn = 'PXL_20230205_150355105'
+    # img_fn = 'PXL_20230205_150409042'
+    # img_fn = 'PXL_20230205_150413474'
+    # img_fn = 'PXL_20230205_150348842'
+    # img_fn = 'PXL_20230205_150345491.MP'
+    # img_fn = 'signal-2023-03-04-114806'
+    # img_fn = 'signal-2023-03-04-114803'
+    # img_fn = 'signal-2023-03-04-114803_edit'
+    # img_fn = 'setgame1'
+    # img_fn = 'setgame11small'
 
-    input_image_hr, input_image_lr = load_input_image(img_fn, resize_lr=(500, 500))
+    lr_size = (500, 500)
+
+    input_image_hr, input_image_lr = load_input_image(img_fn, resize_lr=lr_size)
 
     scale_x = input_image_hr.shape[0] / input_image_lr.shape[0]
     scale_y = input_image_hr.shape[1] / input_image_lr.shape[1]
@@ -460,7 +503,9 @@ def main():
     # Contours are LR
     all_contours = extract_contours_from_mask(mask)
     # previously cards
-    card_contours = cards_from_contours(all_contours)
+    card_contours = cards_from_contours(all_contours, img_size=lr_size)
+
+    cv2.drawContours(input_image_lr, card_contours, -1, color=(0, 255, 255))
 
     # size of card images
     card_size = (CARD_WIDTH, CARD_HEIGHT)
@@ -486,6 +531,40 @@ def main():
         grid_rows=6,
         grid_cols=2
     )
+
+    overlay = input_image_hr.copy()
+
+    for set_ind, card_set in enumerate(sets):
+
+        print(f'{set_ind} -> {card_set}')
+
+        for card_ind in card_set:
+            cnt = card_contours[card_ind].copy()
+
+            cnt[:, :, 1] = cnt[:, :, 1] * scale_x
+            cnt[:, :, 0] = cnt[:, :, 0] * scale_y
+
+            M = cv2.moments(cnt)
+            if M['m00'] != 0:
+                cX = int(M["m10"] / M["m00"])
+                cY = int(M["m01"] / M["m00"])
+            else:
+                cX = 0
+                cY = 0
+
+            center = (int(cX - 60 + set_ind * 40), int(cY))
+            print(f'{card_ind} -> {center}')
+
+            cv2.circle(overlay, center, 15, SET_COLORS[set_ind % 4], thickness=-1)
+
+            # cv2.drawContours(img_set, [cnt], -1, SET_COLORS[i], thickness=2)
+
+    img_set = input_image_hr.copy()
+    alpha = 0.6
+    img_set = cv2.addWeighted(overlay, alpha, img_set, 1 - alpha, 0)
+
+    img_set = cv2.resize(img_set, (800, 600))
+    cv2.imshow(f'sets', img_set)
 
     # Show the grid
     cv2.imshow('Grid', card_grid)
