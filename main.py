@@ -2,13 +2,16 @@ import cv2
 
 import numpy as np
 
+from itertools import combinations
+
 from inspyrenet.inspyrenet_inference import mask_image
 
 IMG_DIR = 'images'
-#mask_dir = 'results'
+# mask_dir = 'results'
 
 CARD_WIDTH = 200
 CARD_HEIGHT = 350
+
 
 def load_input_image(image_name: str, resize_lr):
     image_fn = f'{IMG_DIR}/{image_name}.jpg'
@@ -377,8 +380,45 @@ def create_card_grid(card_images, card_size, grid_rows, grid_cols):
     return grid_image
 
 
-def main():
+def find_sets(card_properties):
+    sets = []
 
+    print('Checking sets...')
+
+    for three_cards in combinations(enumerate(card_properties), 3):
+        is_set = check_set(three_cards)
+        if is_set:
+            print('is a set:')
+            for c in three_cards:
+                ind = c[0]
+                x = ind // 2
+                y = ind % 2
+                print(f'X={x+1} Y={y+1} PROPS={list(c[1].values())}')
+            sets.append(three_cards)
+
+    print(f'Found {len(sets)} sets!')
+
+    return sets
+
+
+def check_set(three_cards):
+    assert len(three_cards) == 3
+
+    props = three_cards[0][1].keys()
+
+    for k in props:
+        kprops = [c[1][k] for c in three_cards]
+        unique_props = np.unique(kprops).size
+
+        # print(np.unique(kprops))
+
+        # must be either 1 or 3
+        if unique_props == 2:
+            return False
+    return True
+
+
+def main():
     img_fn = 'PXL_20230205_150355105'
     # img_fn = 'PXL_20230205_150409042'
     # img_fn = 'PXL_20230205_150413474'
@@ -412,6 +452,8 @@ def main():
         card_images=card_images,
         card_size=card_size,
     )
+
+    sets = find_sets(card_properties)
 
     card_grid = create_card_grid(
         card_images=card_images,
