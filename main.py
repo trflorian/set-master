@@ -2,38 +2,30 @@ import cv2
 
 import numpy as np
 
-# from inspyrenet_inference import mask_image
+from inspyrenet.inspyrenet_inference import mask_image
 
 IMG_DIR = 'images'
-mask_dir = 'results'
+#mask_dir = 'results'
 
 CARD_WIDTH = 200
 CARD_HEIGHT = 350
 
-img_fn = 'PXL_20230205_150355105'
-
-
-# img_fn = 'PXL_20230205_150409042'
-# img_fn = 'PXL_20230205_150413474'
-# img_fn = 'PXL_20230205_150348842'
-# img_fn = 'PXL_20230205_150345491.MP'
-
-def load_input_image(image_name: str, resize_lr=(500, 500)):
+def load_input_image(image_name: str, resize_lr):
     image_fn = f'{IMG_DIR}/{image_name}.jpg'
 
-    input_image = cv2.imread(image_fn)
-    input_image_lr = cv2.resize(input_image, resize_lr)
+    input_image_hr = cv2.imread(image_fn)
+    input_image_lr = cv2.resize(input_image_hr, resize_lr)
 
-    return input_image, input_image_lr
+    return input_image_hr, input_image_lr
 
 
 def create_mask(image):
     # TODO remove
-    mask = cv2.imread(f'{mask_dir}/{IMG_DIR}_500x500/{img_fn}.png')
-    return mask
+    #mask = cv2.imread(f'{mask_dir}/{IMG_DIR}_500x500/{img_fn}.png')
+    #return mask
 
     # TODO
-    # return np.array(mask_image(input_img_fn))
+    return np.array(mask_image(image))
 
 
 def pre_process_mask(mask):
@@ -391,15 +383,20 @@ def create_card_grid(card_images, card_size, grid_rows, grid_cols):
 
 
 def main():
-    card_size = (CARD_WIDTH, CARD_HEIGHT)
 
-    hr_image, input_img = load_input_image(img_fn)
+    img_fn = 'PXL_20230205_150355105'
+    # img_fn = 'PXL_20230205_150409042'
+    # img_fn = 'PXL_20230205_150413474'
+    # img_fn = 'PXL_20230205_150348842'
+    # img_fn = 'PXL_20230205_150345491.MP'
 
-    scale_x = hr_image.shape[0] / input_img.shape[0]
-    scale_y = hr_image.shape[1] / input_img.shape[1]
+    input_image_hr, input_image_lr = load_input_image(img_fn, resize_lr=(500, 500))
+
+    scale_x = input_image_hr.shape[0] / input_image_lr.shape[0]
+    scale_y = input_image_hr.shape[1] / input_image_lr.shape[1]
 
     # Mask is LR
-    mask = create_mask(hr_image)
+    mask = create_mask(input_image_lr)
     mask = pre_process_mask(mask)
 
     # Contours are LR
@@ -407,9 +404,11 @@ def main():
     # previously cards
     card_contours = cards_from_contours(all_contours)
 
+    # size of card images
+    card_size = (CARD_WIDTH, CARD_HEIGHT)
     card_images = hr_card_images_from_lr_contours(
         card_contours=card_contours,
-        hr_image=hr_image,
+        hr_image=input_image_hr,
         hr_scale_factor=(scale_x, scale_y),
         card_size=card_size,
     )
@@ -435,7 +434,7 @@ def main():
     # cv2.imshow('edges', edges)
 
     # cv2.imshow('cont', img_cont)
-    cv2.imshow('img', input_img)
+    cv2.imshow('img', input_image_lr)
     cv2.waitKey()
     cv2.destroyAllWindows()
 
