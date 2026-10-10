@@ -20,7 +20,7 @@ training = [
     "torch>=2.7,<2.15",
     "torchmetrics>=1.7",
     "torchvision>=0.22",
-    "tensorboard>=2.20",
+    "wandb>=0.22",
 ]
 
 [build-system]

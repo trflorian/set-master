@@ -1,0 +1,13 @@
+services:
+  wandb:
+    image: wandb/local:latest
+    ports:
+      - "127.0.0.1:8080:8080"
+    environment:
+      HOST: http://localhost:8080
+    volumes:
+      - wandb_data:/vol
+    restart: unless-stopped
+
+volumes:
+  wandb_data:

@@ -133,6 +133,7 @@ data/
 # Test output
 tests/output/
 runs/
+wandb/
 models/*.pth
 
 # Misc

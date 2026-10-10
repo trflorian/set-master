@@ -4,8 +4,9 @@ from datetime import datetime
 from pathlib import Path
 
 import lightning.pytorch as pl
+import wandb
 from lightning.pytorch.callbacks import EarlyStopping, LearningRateMonitor, ModelCheckpoint
-from lightning.pytorch.loggers import CSVLogger, TensorBoardLogger
+from lightning.pytorch.loggers import CSVLogger, WandbLogger
 
 from set_master.training.data import CardDataModule
 from set_master.training.model import DEFAULT_REPO, DEFAULT_WEIGHTS
@@ -20,6 +21,9 @@ def main() -> None:
     parser.add_argument("--train-data", type=Path, required=True, help="COCO dataset root containing annotations.json")
     parser.add_argument("--variant", choices=list(DetectorVariant), default="box")
     parser.add_argument("--experiment-name", help="Defaults to detector type and timestamp")
+    parser.add_argument("--wandb-url", default="http://localhost:8080")
+    parser.add_argument("--wandb-project", default="set-master")
+    parser.add_argument("--wandb-entity")
     parser.add_argument("--val-data", type=Path, help="Separate validation dataset; otherwise use a seeded image split")
     parser.add_argument("--test-data", type=Path, default=REAL_TESTSET_DIR)
     parser.add_argument("--no-augmentation", action="store_true")
@@ -70,8 +74,14 @@ def main() -> None:
     logger.log_hyperparams(model.hparams)
     run_dir = Path(logger.log_dir)
     run_dir.mkdir(parents=True, exist_ok=True)
-    tensorboard = TensorBoardLogger(str(run_dir), name="tensorboard", version="")
-    tensorboard.log_hyperparams(model.hparams)
+    tracker = WandbLogger(
+        name=args.experiment_name, project=args.wandb_project, entity=args.wandb_entity,
+        save_dir=str(run_dir), log_model=False,
+        settings=wandb.Settings(base_url=args.wandb_url, mode="online"),
+        tags=[variant.value],
+    )
+    tracker.log_hyperparams({**dict(model.hparams), **json.loads(json.dumps(vars(args), default=str))})
+    print(f"W&B dashboard: {tracker.experiment.url}")
     (run_dir / "split.json").write_text(json.dumps(data.split_manifest, indent=2) + "\n")
     (run_dir / "config.json").write_text(json.dumps(vars(args), default=str, indent=2) + "\n")
     monitor = "val/map" if variant == DetectorVariant.BOX else "val/geometry_map"
@@ -82,19 +92,20 @@ def main() -> None:
     early_stopping = EarlyStopping(monitor=monitor, mode="max", patience=args.early_stopping_patience,
                                    min_delta=args.early_stopping_min_delta, check_on_train_epoch_end=False, verbose=True)
     epoch_evaluation = EpochEvaluation(
-        run_dir, tensorboard, data.test_dataset,
+        run_dir, tracker, data.test_dataset,
         validation_overlay_ids=args.validation_overlay_ids, test_overlay_ids=args.test_overlay_ids,
         score_threshold=args.score_threshold, iou_threshold=args.iou_threshold,
     )
     trainer = pl.Trainer(
         max_epochs=args.epochs, accelerator=args.accelerator, devices=1, precision=args.precision,
-        logger=[logger, tensorboard], callbacks=[epoch_evaluation, early_stopping, LearningRateMonitor(logging_interval="epoch"), checkpoint], gradient_clip_val=1.0,
+        logger=[logger, tracker], callbacks=[epoch_evaluation, early_stopping, LearningRateMonitor(logging_interval="epoch"), checkpoint], gradient_clip_val=1.0,
         log_every_n_steps=1,
         fast_dev_run=args.fast_dev_run, default_root_dir=str(experiment_dir),
     )
     trainer.fit(model, datamodule=data, ckpt_path=args.resume)
     if checkpoint.best_model_path:
         print(f"Best checkpoint: {checkpoint.best_model_path}")
+    wandb.finish()
 
 
 if __name__ == "__main__":

@@ -6,17 +6,17 @@ import cv2
 import numpy as np
 import torch
 import lightning.pytorch as pl
-from lightning.pytorch.loggers import TensorBoardLogger
+from lightning.pytorch.loggers import WandbLogger
 from torch import Tensor
 
-from set_master.training.data import CocoCardDataset, DetectionBatch
+from set_master.training.data import CardDataModule, CocoCardDataset, DetectionBatch
 from set_master.training.evaluation import evaluate_detector, prediction_overlay
 from set_master.training.models.box import CardDetector
 
 
 class EpochEvaluation(pl.Callback):
     def __init__(
-        self, run_dir: Path, image_logger: TensorBoardLogger,
+        self, run_dir: Path, image_logger: WandbLogger,
         test_dataset: CocoCardDataset | None,
         validation_overlay_ids: list[int] | None = None,
         test_overlay_ids: list[int] | None = None,
@@ -34,6 +34,8 @@ class EpochEvaluation(pl.Callback):
         if not trainer.is_global_zero:
             return
         data = trainer.datamodule
+        if not isinstance(data, CardDataModule):
+            raise TypeError("Data previews require CardDataModule")
         directory = self.run_dir / "data_previews"
         directory.mkdir(parents=True, exist_ok=True)
         for name, source in (("training", data.train_dataset), ("validation", data.val_dataset),
@@ -60,9 +62,8 @@ class EpochEvaluation(pl.Callback):
                             cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 0, 0), 1)
             if not cv2.imwrite(str(directory / f"{name}.jpg"), grid):
                 raise OSError(f"Could not write {name} preview")
-            self.image_logger.experiment.add_image(f"data/{name}", cv2.cvtColor(grid, cv2.COLOR_BGR2RGB),
-                                                   global_step=0, dataformats="HWC")
-        self.image_logger.experiment.flush()
+            self.image_logger.log_image(key=f"data/{name}", images=[cv2.cvtColor(grid, cv2.COLOR_BGR2RGB)],
+                                        step=0)
         pl_module.print(f"Data preview grids: {directory}")
 
     def on_validation_batch_end(
@@ -82,9 +83,9 @@ class EpochEvaluation(pl.Callback):
             directory.mkdir(parents=True, exist_ok=True)
             if not cv2.imwrite(str(directory / f"overlay_{image_id:06d}.jpg"), preview):
                 raise OSError(f"Could not write validation overlay in {directory}")
-            self.image_logger.experiment.add_image(
-                f"validation/image_{image_id:06d}", cv2.cvtColor(preview, cv2.COLOR_BGR2RGB),
-                global_step=trainer.global_step, dataformats="HWC",
+            self.image_logger.log_image(
+                key=f"validation/image_{image_id:06d}", images=[cv2.cvtColor(preview, cv2.COLOR_BGR2RGB)],
+                step=trainer.global_step,
             )
 
     def on_validation_end(self, trainer: pl.Trainer, pl_module: CardDetector) -> None:
@@ -107,9 +108,9 @@ class EpochEvaluation(pl.Callback):
                 preview = cv2.imread(str(directory / "real" / f"overlay_{image_id:06d}.jpg"))
                 if preview is None:
                     raise FileNotFoundError(f"Missing real overlay for image {image_id}")
-                self.image_logger.experiment.add_image(
-                    f"real/image_{image_id:06d}", cv2.cvtColor(preview, cv2.COLOR_BGR2RGB),
-                    global_step=trainer.global_step, dataformats="HWC",
+                self.image_logger.log_image(
+                    key=f"real/image_{image_id:06d}", images=[cv2.cvtColor(preview, cv2.COLOR_BGR2RGB)],
+                    step=trainer.global_step,
                 )
         record = {"epoch": trainer.current_epoch + 1, "global_step": trainer.global_step, "metrics": metrics}
         (directory / "metrics.json").write_text(json.dumps(record, indent=2) + "\n")
@@ -117,7 +118,6 @@ class EpochEvaluation(pl.Callback):
         for logger in trainer.loggers:
             logger.log_metrics({**logged, "epoch": trainer.current_epoch}, step=trainer.global_step)
             logger.save()
-        self.image_logger.experiment.flush()
         summary = " | ".join(f"{name}: {metrics[name]:.3f}" for name in
                              ("val/map", "val/geometry_map", "real/map", "real/precision", "real/recall")
                              if name in metrics)
