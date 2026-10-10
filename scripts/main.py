@@ -478,16 +478,16 @@ def draw_sets(card_images, sets):
 
 
 def main():
-    img_fn = 'PXL_20230205_150355105'
-    # img_fn = 'PXL_20230205_150409042'
-    # img_fn = 'PXL_20230205_150413474'
-    # img_fn = 'PXL_20230205_150348842'
-    # img_fn = 'PXL_20230205_150345491.MP'
-    # img_fn = 'signal-2023-03-04-114806'
-    # img_fn = 'signal-2023-03-04-114803'
-    # img_fn = 'signal-2023-03-04-114803_edit'
-    # img_fn = 'setgame1'
-    # img_fn = 'setgame11small'
+    img_fn = '000004'
+    # img_fn = '000007'
+    # img_fn = '000008'
+    # img_fn = '000002'
+    # img_fn = '000001'
+    # img_fn = '000013'
+    # img_fn = '000011'
+    # img_fn = '000011_edit'
+    # img_fn = '000009'
+    # img_fn = '0000091small'
 
     lr_size = (500, 500)
 

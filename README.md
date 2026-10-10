@@ -36,10 +36,25 @@ uv run --extra training scripts/train_card_detector.py \
 
 uv run --extra training scripts/predict_card_detector.py \
   --checkpoint runs/card_detector/version_0/checkpoints/last.ckpt \
-  --image images/PXL_20230205_150413474.jpg
+  --image images/000008.jpg
 ```
 
 Prediction writes `predictions.json`, `debug.jpg`, and card crops to `runs/card_predictions/`. Trained checkpoints include the encoder weights; prediction does not need the original pretrained file.
+
+## Reference test set
+
+`data/testset/` contains the 13 reference photos with numbered filenames, COCO
+annotations, binary masks, instance masks, and debug overlays. The current labels
+cover the 12 fully visible face-up cards in each photo. Deck tops and partial
+cards are excluded. `manifest.json` preserves source filenames, scene groups,
+and the relationship between the original photo and its edited crop.
+
+Editable polygons are stored in `images/reference_cards.json`. Regenerate
+the ignored dataset with:
+
+```sh
+uv run scripts/export_reference_testset.py
+```
 
 ## Visual tests
 
