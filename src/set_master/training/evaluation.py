@@ -95,6 +95,7 @@ def evaluate_detector(
     image_ids: list[int] | None = None, overlay_image_ids: tuple[int, ...] = (),
     batch_size: int = 1, num_workers: int = 0,
     score_threshold: float = 0.5, iou_threshold: float = 0.5,
+    progress: bool = True,
 ) -> EvaluationResult:
     if model.training:
         raise ValueError("Call model.eval() before evaluation")
@@ -173,8 +174,10 @@ def evaluate_detector(
                         crop_dir.mkdir(parents=True, exist_ok=True)
                         if not cv2.imwrite(str(crop_dir / f"card_{index:03d}.png"), rectify_card(source, points)):
                             raise OSError(f"Could not save crop in {crop_dir}")
-            print(f"Evaluated {len(rows)}/{len(subset)} images", end="\r")
-    print()
+            if progress:
+                print(f"Evaluated {len(rows)}/{len(subset)} images", end="\r")
+    if progress:
+        print()
     raw = metric.compute()
     metrics = {name: float(raw[name].item()) for name in ("map", "map_50", "map_75", "mar_100")}
     metrics["inference_seconds"] = inference_seconds

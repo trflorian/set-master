@@ -1,24 +1,33 @@
 import argparse
 import json
+from datetime import datetime
 from pathlib import Path
 
 import lightning.pytorch as pl
-from lightning.pytorch.callbacks import ModelCheckpoint
-from lightning.pytorch.loggers import CSVLogger
+from lightning.pytorch.callbacks import EarlyStopping, LearningRateMonitor, ModelCheckpoint
+from lightning.pytorch.loggers import CSVLogger, TensorBoardLogger
 
 from set_master.training.data import CardDataModule
 from set_master.training.model import DEFAULT_REPO, DEFAULT_WEIGHTS
 from set_master.training.config import DetectorConfig, DetectorVariant
 from set_master.training.models.factory import create_detector
-from set_master.paths import RUNS_DIR
+from set_master.paths import REAL_TESTSET_DIR, RUNS_DIR
+from set_master.training.callbacks import EpochEvaluation
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Train a frozen DINOv3 ConvNeXt card detector")
     parser.add_argument("--train-data", type=Path, required=True, help="COCO dataset root containing annotations.json")
     parser.add_argument("--variant", choices=list(DetectorVariant), default="box")
-    parser.add_argument("--experiment-name", required=True)
+    parser.add_argument("--experiment-name", help="Defaults to detector type and timestamp")
     parser.add_argument("--val-data", type=Path, help="Separate validation dataset; otherwise use a seeded image split")
+    parser.add_argument("--test-data", type=Path, default=REAL_TESTSET_DIR)
+    parser.add_argument("--early-stopping-patience", type=int, default=5)
+    parser.add_argument("--early-stopping-min-delta", type=float, default=0.001)
+    parser.add_argument("--score-threshold", type=float, default=0.75)
+    parser.add_argument("--iou-threshold", type=float, default=0.5)
+    parser.add_argument("--validation-overlay-ids", type=int, nargs="*", default=None)
+    parser.add_argument("--test-overlay-ids", type=int, nargs="*", default=None)
     parser.add_argument("--val-fraction", type=float, default=0.2)
     parser.add_argument("--weights", type=Path, default=DEFAULT_WEIGHTS)
     parser.add_argument("--dinov3-repo", type=Path, default=DEFAULT_REPO)
@@ -37,6 +46,8 @@ def main() -> None:
     parser.add_argument("--fast-dev-run", action="store_true", help="Verify one training and validation batch")
     args = parser.parse_args()
     variant = DetectorVariant(args.variant)
+    if args.experiment_name is None:
+        args.experiment_name = f"{variant.value}_{datetime.now():%Y%m%d_%H%M%S_%f}"
     if not args.experiment_name or Path(args.experiment_name).name != args.experiment_name:
         parser.error("experiment-name must be a directory name")
     experiment_dir = args.output_dir / variant.value / args.experiment_name
@@ -46,7 +57,7 @@ def main() -> None:
     pl.seed_everything(args.seed, workers=True)
     data = CardDataModule(
         args.train_data, args.val_data, args.batch_size, args.num_workers, args.val_fraction, args.seed,
-        variant=variant,
+        variant=variant, test_root=args.test_data,
     )
     data.setup("fit")
     model = create_detector(
@@ -58,15 +69,25 @@ def main() -> None:
     logger.log_hyperparams(model.hparams)
     run_dir = Path(logger.log_dir)
     run_dir.mkdir(parents=True, exist_ok=True)
+    tensorboard = TensorBoardLogger(str(run_dir), name="tensorboard", version="")
+    tensorboard.log_hyperparams(model.hparams)
     (run_dir / "split.json").write_text(json.dumps(data.split_manifest, indent=2) + "\n")
     (run_dir / "config.json").write_text(json.dumps(vars(args), default=str, indent=2) + "\n")
+    monitor = "val/map" if variant == DetectorVariant.BOX else "val/geometry_map"
     checkpoint = ModelCheckpoint(
-        dirpath=run_dir / "checkpoints", monitor="val/map" if variant == DetectorVariant.BOX else "val/geometry_map", mode="max",
+        dirpath=run_dir / "checkpoints", monitor=monitor, mode="max",
         save_top_k=1, save_last=True, filename="epoch-{epoch:02d}", auto_insert_metric_name=False,
+    )
+    early_stopping = EarlyStopping(monitor=monitor, mode="max", patience=args.early_stopping_patience,
+                                   min_delta=args.early_stopping_min_delta, check_on_train_epoch_end=False, verbose=True)
+    epoch_evaluation = EpochEvaluation(
+        run_dir, tensorboard, data.test_dataset,
+        validation_overlay_ids=args.validation_overlay_ids, test_overlay_ids=args.test_overlay_ids,
+        score_threshold=args.score_threshold, iou_threshold=args.iou_threshold,
     )
     trainer = pl.Trainer(
         max_epochs=args.epochs, accelerator=args.accelerator, devices=1, precision=args.precision,
-        logger=logger, callbacks=[checkpoint], gradient_clip_val=1.0,
+        logger=[logger, tensorboard], callbacks=[epoch_evaluation, early_stopping, LearningRateMonitor(logging_interval="epoch"), checkpoint], gradient_clip_val=1.0,
         log_every_n_steps=1,
         fast_dev_run=args.fast_dev_run, default_root_dir=str(experiment_dir),
     )

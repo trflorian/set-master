@@ -36,11 +36,30 @@ DINOv3 source is pinned at `src/dinov3/`. Pretrained weights belong in
 
 In the training notebook, select a generated dataset and set `fast_dev_run = False` for full training. The default validation split is 20%; `val_data` selects a separate dataset.
 
-Select `variant` and `experiment_name` in the training notebook. Runs under
+Select `variant` in the training notebook. Experiment names are generated from
+the detector type and timestamp, such as `corners_20261010_133100_123456`. Runs under
 `runs/card_detector/<variant>/<experiment>/version_N/` contain configuration,
 split IDs, CSV metrics, and best/last checkpoints. Geometry variants select the
 best checkpoint by geometry AP; the baseline uses box AP. Existing baseline
 checkpoints remain loadable. Set `resume_checkpoint` to resume a run.
+
+Training logs losses, learning rate, validation AP, and real-data AP,
+precision/recall, and geometry metrics to CSV and TensorBoard. The notebook
+includes an embedded TensorBoard dashboard. A separate local dashboard can be
+opened with:
+
+```sh
+uv run --extra training tensorboard --logdir runs/card_detector
+```
+
+`test_data` defaults to `data/testset/` and is evaluated after every epoch.
+It is excluded from training, early stopping, and checkpoint selection.
+Early stopping monitors validation AP with patience 5 and minimum improvement
+0.001; both are configurable. Validation overlays reuse the existing validation
+predictions. All validation and real images are saved by default; set explicit
+overlay ID lists to limit them. Epoch outputs live in
+`<run>/epoch_evaluations/epoch_0001/`, with `validation/`, `real/`, and
+`metrics.json`. TensorBoard images can be compared across epochs.
 
 Evaluation loads the variant recorded in the selected checkpoint. All variants
 report box metrics; geometry variants also report rotated/polygon AP. Corners
@@ -83,7 +102,7 @@ difference. Its OpenCV rotated suppression runs on the CPU.
 ```sh
 uv run --extra training scripts/train_card_detector.py \
   --train-data data/synthetic_datasets/YOUR_RUN \
-  --variant corners --experiment-name YOUR_EXPERIMENT
+  --variant corners
 
 uv run --extra training scripts/predict_card_detector.py \
   --checkpoint runs/card_detector/corners/YOUR_EXPERIMENT/version_0/checkpoints/last.ckpt \

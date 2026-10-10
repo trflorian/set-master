@@ -82,6 +82,7 @@ class CardDataModule(pl.LightningDataModule):
         self, train_root: Path, val_root: Path | None = None, batch_size: int = 2,
         num_workers: int = 4, val_fraction: float = 0.2, seed: int = 42,
         variant: DetectorVariant = DetectorVariant.BOX,
+        test_root: Path | None = None,
     ) -> None:
         super().__init__()
         self.train_root = train_root
@@ -91,6 +92,8 @@ class CardDataModule(pl.LightningDataModule):
         self.val_fraction = val_fraction
         self.seed = seed
         self.variant = variant
+        self.test_root = test_root
+        self.test_dataset = CocoCardDataset(test_root, variant) if test_root is not None else None
 
     def setup(self, stage: str | None = None) -> None:
         dataset = CocoCardDataset(self.train_root, self.variant)
@@ -134,3 +137,9 @@ class CardDataModule(pl.LightningDataModule):
             self.val_dataset, batch_size=self.batch_size, num_workers=self.num_workers,
             collate_fn=collate_detection, persistent_workers=self.num_workers > 0,
         )
+
+    def test_dataloader(self) -> DataLoader:
+        if self.test_dataset is None:
+            raise ValueError("Set test_root to evaluate a test dataset")
+        return DataLoader(self.test_dataset, batch_size=1, num_workers=self.num_workers,
+                          collate_fn=collate_detection)

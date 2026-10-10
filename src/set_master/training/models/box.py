@@ -63,21 +63,31 @@ class CardDetector(pl.LightningModule):
             self.log(f"train/{name}", value, on_step=False, on_epoch=True, batch_size=len(images))
         return loss
 
-    def validation_step(self, batch: DetectionBatch, batch_idx: int) -> None:
+    def validation_step(self, batch: DetectionBatch, batch_idx: int) -> list[dict[str, Tensor]]:
         images, targets = batch
         predictions = self(images)
         self.box_map.update(predictions, targets)
         if self.geometry_metrics is not None:
             self.geometry_metrics.update(predictions, targets)
+        return predictions
 
     def on_validation_epoch_end(self) -> None:
+        self._log_detection_metrics("val")
+
+    def test_step(self, batch: DetectionBatch, batch_idx: int) -> list[dict[str, Tensor]]:
+        return self.validation_step(batch, batch_idx)
+
+    def on_test_epoch_end(self) -> None:
+        self._log_detection_metrics("test")
+
+    def _log_detection_metrics(self, prefix: str) -> None:
         metrics = self.box_map.compute()
         for name in ("map", "map_50", "map_75", "mar_100"):
-            self.log(f"val/{name}", metrics[name], prog_bar=name == "map", sync_dist=True)
+            self.log(f"{prefix}/{name}", metrics[name], prog_bar=name in ("map", "map_50"), sync_dist=True)
         self.box_map.reset()
         if self.geometry_metrics is not None:
             for name, value in self.geometry_metrics.compute().items():
-                self.log(f"val/{name}", value)
+                self.log(f"{prefix}/{name}", value, prog_bar=name == "geometry_map")
             self.geometry_metrics.reset()
 
     def configure_optimizers(self) -> torch.optim.Optimizer:
