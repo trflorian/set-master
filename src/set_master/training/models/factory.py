@@ -31,8 +31,17 @@ def create_detector(
 
 def load_detector(checkpoint_path: Path, repo_path: Path = DINOV3_REPO_DIR) -> CardDetector:
     checkpoint = torch.load(checkpoint_path, map_location="cpu", weights_only=True)
-    variant = DetectorVariant(checkpoint.get("hyper_parameters", {}).get("variant", "box"))
+    hyperparameters = checkpoint.get("hyper_parameters", {})
+    variant = DetectorVariant(hyperparameters.get("variant", "box"))
+    # Older corner checkpoints used Torchvision's eight-layer, 512-channel head.
+    legacy_corner_head = variant == DetectorVariant.CORNERS and 'keypoint_channels' not in hyperparameters
     del checkpoint
+    if legacy_corner_head:
+        return CornerCardDetector.load_from_checkpoint(
+            checkpoint_path, map_location="cpu", weights_only=True,
+            repo_path=str(repo_path), initialize_pretrained=False,
+            keypoint_channels=(512,) * 8,
+        ).eval()
     return detector_class(variant).load_from_checkpoint(
         checkpoint_path, map_location="cpu", weights_only=True,
         repo_path=str(repo_path), initialize_pretrained=False,
