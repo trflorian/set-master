@@ -1,10 +1,12 @@
 from collections.abc import Callable, Iterator
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass
 import hashlib
 import html
 import json
 from pathlib import Path
 import re
+import random
 import time
 from typing import Any
 from urllib.error import HTTPError, URLError
@@ -15,7 +17,7 @@ import cv2
 import numpy as np
 
 from set_master.models import BackgroundSplit
-from set_master.paths import BACKGROUNDS_DIR
+from set_master.paths import BACKGROUNDS_DIR, TABLETOP_TEXTURES_DIR
 
 
 DEFAULT_QUERIES = (
@@ -52,10 +54,10 @@ def load_backgrounds(root: Path) -> list[BackgroundRecord]:
     return [BackgroundRecord(**record) for record in json.loads(path.read_text())["images"]]
 
 
-def save_backgrounds(root: Path, records: list[BackgroundRecord]) -> None:
+def save_backgrounds(root: Path, records: list[BackgroundRecord], source: str = "Wikimedia Commons") -> None:
     root.mkdir(parents=True, exist_ok=True)
     temporary = root / "manifest.tmp"
-    temporary.write_text(json.dumps({"source": "Wikimedia Commons", "images": [asdict(r) for r in records]},
+    temporary.write_text(json.dumps({"source": source, "images": [asdict(r) for r in records]},
                                     indent=2) + "\n")
     temporary.replace(root / "manifest.json")
 
@@ -185,3 +187,68 @@ def crop_background(image: np.ndarray, width: int, height: int, x_fraction: floa
     x = round((resized.shape[1] - width) * x_fraction)
     y = round((resized.shape[0] - height) * y_fraction)
     return resized[y:y + height, x:x + width].copy()
+
+
+def download_tabletop_textures(
+    count: int = 100, root: Path = TABLETOP_TEXTURES_DIR,
+    progress: Callable[[int, int], None] | None = None,
+) -> list[BackgroundRecord]:
+    """Download surface color maps from Poly Haven; keep source-level train/validation splits."""
+    if count < 1:
+        raise ValueError("Texture count must be positive")
+    user_agent = "SetMasterBackgroundDownloader/1.0 (Powered by Poly Haven)"
+    assets = json.loads(_read_url("https://api.polyhaven.com/assets?t=textures", user_agent))
+    records = load_backgrounds(root)
+    known = {record.source_url.rsplit("/", 1)[-1] for record in records}
+    candidates = [(name, asset) for name, asset in assets.items()
+                  if set(asset.get("categories", [])) & {"wood", "fabric", "carpet", "leather", "concrete"}
+                  and not set(asset.get("categories", [])) & {"bark", "outdoor", "terrain", "brick", "roofing"}
+                  and name not in known]
+    random.Random(42).shuffle(candidates)
+    (root / "images").mkdir(parents=True, exist_ok=True)
+    failures: list[dict[str, str]] = []
+
+    def download(candidate: tuple[str, dict[str, Any]]) -> BackgroundRecord | None:
+        name, asset = candidate
+        try:
+            files = json.loads(_read_url(f"https://api.polyhaven.com/files/{name}", user_agent))
+            color_map = files.get("Diffuse", files.get("diff", files.get("BaseColor", {})))
+            entry = color_map.get("1k", {}).get("jpg")
+            if entry is None:
+                return None
+            payload = _read_url(entry["url"], user_agent)
+            image = cv2.imdecode(np.frombuffer(payload, dtype=np.uint8), cv2.IMREAD_COLOR)
+            if image is None:
+                raise ValueError("Could not decode texture")
+            relative = f"images/{name}.jpg"
+            if not cv2.imwrite(str(root / relative), image):
+                raise OSError(f"Could not save {relative}")
+            identity = hashlib.sha256(name.encode()).hexdigest()
+            return BackgroundRecord(
+                file_name=relative, source_id=int(identity[:12], 16), title=asset["name"],
+                source_url=f"https://polyhaven.com/a/{name}", download_url=entry["url"],
+                source_sha1=hashlib.sha1(payload).hexdigest(), pixel_sha256=hashlib.sha256(image.tobytes()).hexdigest(),
+                author=", ".join(asset.get("authors", {})), license="CC0", license_url="https://creativecommons.org/publicdomain/zero/1.0/",
+                query="tabletop surface texture", width=image.shape[1], height=image.shape[0],
+                split="validation" if int(identity[:8], 16) % 10 == 0 else "train",
+            )
+        except (HTTPError, URLError, TimeoutError, ValueError, OSError) as error:
+            # Each download is independent; keep failures visible and preserve successful assets.
+            failures.append({"source": name, "error": str(error)})
+            return None
+
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        for start in range(0, len(candidates), 4):
+            batch = candidates[start:start + min(4, count - len(records))]
+            if not batch:
+                break
+            for record in executor.map(download, batch):
+                if record is not None:
+                    records.append(record)
+            save_backgrounds(root, records, source="Poly Haven")
+            if progress:
+                progress(len(records), count)
+            if len(records) >= count:
+                break
+    (root / "download_failures.json").write_text(json.dumps(failures, indent=2) + "\n")
+    return records

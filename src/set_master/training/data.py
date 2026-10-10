@@ -79,7 +79,8 @@ class CocoCardDataset(Dataset[tuple[Tensor, DetectionTarget]]):
             if worker is not None and self.augmentation_worker_seed != worker.seed:
                 self.augmentation.transform.set_random_seed(worker.seed)
                 self.augmentation_worker_seed = worker.seed
-            polygons = [np.asarray(annotation["segmentation"][0], dtype=np.float32).reshape(-1, 2)
+            polygons = [[np.asarray(segment, dtype=np.float32).reshape(-1, 2)
+                         for segment in annotation["segmentation"]]
                         for annotation in self.annotations[info["id"]]]
             rgb, target = self.augmentation(rgb, target, polygons)
         tensor = torch.from_numpy(np.ascontiguousarray(rgb)).permute(2, 0, 1).float().div(255)

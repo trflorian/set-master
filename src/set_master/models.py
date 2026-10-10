@@ -2,6 +2,12 @@ from dataclasses import dataclass
 from enum import Enum, StrEnum
 
 
+class SceneLayout(StrEnum):
+    SCATTERED = "scattered"
+    GRID = "grid"
+    CLUSTERED = "clustered"
+
+
 class BackgroundType(StrEnum):
     GRAY = "gray"
     REAL_SCENE = "real_scene"

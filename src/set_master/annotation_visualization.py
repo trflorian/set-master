@@ -16,8 +16,12 @@ def draw_annotation_geometry(
     preview = cv2.resize(image, (round(width * scale), round(height * scale)))
     for index, annotation in enumerate(annotations, start=1):
         if "segmentation" in annotation:
-            for polygon in np.asarray(annotation["segmentation"], dtype=np.float32):
-                points = np.rint(polygon.reshape(-1, 2) * scale).astype(np.int32)
+            segments = annotation["segmentation"]
+            if not isinstance(segments, list):
+                raise ValueError("Debug overlays require COCO polygon segmentations")
+            for segment in segments:
+                polygon = np.asarray(segment, dtype=np.float32).reshape(-1, 2)
+                points = np.rint(polygon * scale).astype(np.int32)
                 cv2.polylines(preview, [points], True, (255, 255, 0), 1)
         x, y, w, h = np.asarray(annotation["bbox"], dtype=np.float32)
         first = (round(float(x * scale)), round(float(y * scale)))

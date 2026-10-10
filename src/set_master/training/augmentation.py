@@ -14,21 +14,25 @@ class CardAugmentation:
         self.transform = A.Compose([
             A.HorizontalFlip(p=0.5),
             A.VerticalFlip(p=0.5),
-            A.Perspective(scale=(0.04, 0.18), fit_output=True, keep_size=True, p=0.75),
-            A.RandomBrightnessContrast(brightness_limit=0.3, contrast_limit=0.3, p=0.8),
-            A.HueSaturationValue(hue_shift_limit=8, sat_shift_limit=30, val_shift_limit=20, p=0.5),
-            A.RGBShift(r_shift_limit=45, g_shift_limit=45, b_shift_limit=45, p=0.6),
-            A.RandomGamma(gamma_limit=(65, 145), p=0.5),
-            A.RandomShadow(p=0.4),
+            A.Perspective(scale=(0.02, 0.08), fit_output=True, keep_size=True, p=0.35),
+            A.RandomBrightnessContrast(brightness_limit=0.15, contrast_limit=0.20, p=0.6),
+            A.HueSaturationValue(hue_shift_limit=5, sat_shift_limit=18, val_shift_limit=10, p=0.4),
+            A.RGBShift(r_shift_limit=15, g_shift_limit=15, b_shift_limit=15, p=0.4),
+            A.RandomGamma(gamma_limit=(85, 115), p=0.4),
+            A.OneOf([
+                A.Illumination(mode="linear", intensity_range=(0.05, 0.20)),
+                A.Illumination(mode="gaussian", intensity_range=(0.05, 0.20)),
+            ], p=0.6),
+            A.RandomShadow(num_shadows_limit=(1, 2), shadow_intensity_range=(0.08, 0.25), p=0.2),
             A.OneOf([A.GaussianBlur(blur_limit=(3, 7)), A.MotionBlur(blur_limit=(3, 9))], p=0.35),
             A.GaussNoise(std_range=(0.01, 0.06), p=0.4),
             A.ImageCompression(quality_range=(45, 95), p=0.4),
         ], keypoint_params=A.KeypointParams(format="xy", remove_invisible=False), seed=seed)
 
     def __call__(self, image: np.ndarray, target: dict[str, Tensor],
-                 polygons: list[np.ndarray]) -> tuple[np.ndarray, dict[str, Tensor]]:
-        lengths = [len(polygon) for polygon in polygons]
-        points = [point for polygon in polygons for point in polygon.tolist()]
+                 polygons: list[list[np.ndarray]]) -> tuple[np.ndarray, dict[str, Tensor]]:
+        lengths = [[len(segment) for segment in polygon] for polygon in polygons]
+        points = [point for polygon in polygons for segment in polygon for point in segment.tolist()]
         if "keypoints" in target:
             points.extend(target["keypoints"][..., :2].reshape(-1, 2).tolist())
         transformed = self.transform(image=image, keypoints=points)
@@ -37,13 +41,16 @@ class CardAugmentation:
         height, width = image.shape[:2]
         boxes, areas, obbs = [], [], []
         offset = 0
-        for length in lengths:
-            polygon = coords[offset:offset + length]
-            offset += length
+        for segment_lengths in lengths:
+            segments = []
+            for length in segment_lengths:
+                segments.append(coords[offset:offset + length])
+                offset += length
+            polygon = np.concatenate(segments)
             lower = np.clip(polygon.min(axis=0), [0, 0], [width, height])
             upper = np.clip(polygon.max(axis=0) + 1, [0, 0], [width, height])
             boxes.append([*lower, *upper])
-            areas.append(abs(cv2.contourArea(polygon)))
+            areas.append(sum(abs(cv2.contourArea(segment)) for segment in segments))
             obbs.append(oriented_box(polygon))
         target = dict(target)
         target["boxes"] = torch.tensor(np.asarray(boxes), dtype=torch.float32).reshape(-1, 4)
