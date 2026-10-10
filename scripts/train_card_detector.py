@@ -1,6 +1,7 @@
 import argparse
 import json
 from datetime import datetime
+from dataclasses import asdict
 from pathlib import Path
 
 import lightning.pytorch as pl
@@ -8,11 +9,12 @@ import wandb
 from lightning.pytorch.callbacks import EarlyStopping, LearningRateMonitor, ModelCheckpoint
 from lightning.pytorch.loggers import CSVLogger
 
+from set_master.training.augmentation import AugmentationConfig
 from set_master.training.data import CardDataModule
 from set_master.training.model import DEFAULT_REPO, DEFAULT_WEIGHTS
 from set_master.training.config import DetectorConfig, DetectorVariant
 from set_master.training.models.factory import create_detector
-from set_master.paths import REAL_TESTSET_DIR, RUNS_DIR
+from set_master.paths import REAL_TESTSET_DIR, RUNS_DIR, AUGMENTATION_PRESET_PATH
 from set_master.training.callbacks import EpochEvaluation
 from set_master.training.logging import create_wandb_logger
 
@@ -28,6 +30,7 @@ def main() -> None:
     parser.add_argument("--val-data", type=Path, help="Separate validation dataset; otherwise use a seeded image split")
     parser.add_argument("--test-data", type=Path, default=REAL_TESTSET_DIR)
     parser.add_argument("--no-augmentation", action="store_true")
+    parser.add_argument("--augmentation-preset", type=Path, default=AUGMENTATION_PRESET_PATH)
     parser.add_argument("--early-stopping-patience", type=int, default=5)
     parser.add_argument("--early-stopping-min-delta", type=float, default=0.001)
     parser.add_argument("--score-threshold", type=float, default=0.75)
@@ -62,11 +65,13 @@ def main() -> None:
     if args.batch_size < 1 or args.num_workers < 0 or not 0 < args.min_size <= args.max_size:
         parser.error("Require batch-size > 0, num-workers >= 0 and 0 < min-size <= max-size")
 
+    augmentation_config = AugmentationConfig.load(args.augmentation_preset)
     pl.seed_everything(args.seed, workers=True)
     data = CardDataModule(
         args.train_data, args.val_data, args.batch_size, args.num_workers, args.val_fraction, args.seed,
         variant=variant, test_root=args.test_data, augment=not args.no_augmentation,
         train_images_per_epoch=args.train_images_per_epoch, val_images_per_epoch=args.val_images_per_epoch,
+        augmentation_config=augmentation_config,
     )
     data.setup("fit")
     model = create_detector(
@@ -82,10 +87,11 @@ def main() -> None:
         run_dir, args.experiment_name, variant,
         args.wandb_url, args.wandb_project, args.wandb_entity,
     )
-    tracker.log_hyperparams({**dict(model.hparams), **json.loads(json.dumps(vars(args), default=str))})
+    tracker.log_hyperparams({**dict(model.hparams), **json.loads(json.dumps(vars(args), default=str)),
+                            "augmentation_config": asdict(augmentation_config)})
     print(f"W&B dashboard: {tracker.experiment.url}")
     (run_dir / "split.json").write_text(json.dumps(data.split_manifest, indent=2) + "\n")
-    (run_dir / "config.json").write_text(json.dumps(vars(args), default=str, indent=2) + "\n")
+    (run_dir / "config.json").write_text(json.dumps({**vars(args), "augmentation_config": asdict(augmentation_config)}, default=str, indent=2) + "\n")
     monitor = "val/map" if variant == DetectorVariant.BOX else "val/geometry_map"
     checkpoint = ModelCheckpoint(
         dirpath=run_dir / "checkpoints", monitor=monitor, mode="max",

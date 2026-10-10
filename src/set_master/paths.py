@@ -12,3 +12,6 @@ REAL_TESTSET_DIR = DATA_DIR / "testset"
 MODELS_DIR = PROJECT_ROOT / "models"
 RUNS_DIR = PROJECT_ROOT / "runs"
 DINOV3_REPO_DIR = PROJECT_ROOT / "src" / "dinov3"
+
+AUGMENTATION_PRESET_PATH = PROJECT_ROOT / "configs" / "augmentation.json"
+AUGMENTATION_BENCHMARK_DIR = DATA_DIR / "augmentation_benchmark"

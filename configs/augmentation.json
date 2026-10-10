@@ -1,0 +1,70 @@
+{
+  "flip_probability": 0.5,
+  "perspective_probability": 0.4,
+  "perspective_scale": [
+    0.01,
+    0.07
+  ],
+  "min_visibility": 0.95,
+  "brightness_probability": 0.65,
+  "brightness_limit": 0.28,
+  "contrast_limit": 0.25,
+  "temperature_probability": 0.35,
+  "temperature_range": [
+    4000,
+    8500
+  ],
+  "temperature_strength": 0.5,
+  "gamma_probability": 0.35,
+  "gamma_range": [
+    80,
+    130
+  ],
+  "illumination_probability": 0.75,
+  "illumination_strength": [
+    0.2,
+    0.55
+  ],
+  "shadow_probability": 0.55,
+  "shadow_strength": [
+    0.25,
+    0.6
+  ],
+  "shadow_size": [
+    0.12,
+    0.45
+  ],
+  "glare_probability": 0.65,
+  "glare_strength": [
+    0.55,
+    0.95
+  ],
+  "glare_radius_ratio": [
+    0.12,
+    0.3
+  ],
+  "glare_spots": [
+    1,
+    2
+  ],
+  "blur_probability": 0.3,
+  "blur_kernel": [
+    3,
+    7
+  ],
+  "downscale_probability": 0.5,
+  "downscale_range": [
+    0.4,
+    0.75
+  ],
+  "noise_probability": 0.3,
+  "noise_std": [
+    0.01,
+    0.045
+  ],
+  "compression_probability": 0.4,
+  "jpeg_quality": [
+    40,
+    85
+  ]
+}

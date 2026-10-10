@@ -10,7 +10,7 @@ import numpy as np
 from torch import Tensor
 from torch.utils.data import DataLoader, Dataset, Sampler, Subset, get_worker_info
 from set_master.training.config import DetectorVariant
-from set_master.training.augmentation import CardAugmentation
+from set_master.training.augmentation import AugmentationConfig, CardAugmentation
 
 
 DetectionTarget = dict[str, Tensor]
@@ -121,6 +121,7 @@ class CardDataModule(pl.LightningDataModule):
         augment: bool = True,
         train_images_per_epoch: int | None = 200,
         val_images_per_epoch: int | None = 20,
+        augmentation_config: AugmentationConfig | None = None,
     ) -> None:
         super().__init__()
         self.train_root = train_root
@@ -132,6 +133,7 @@ class CardDataModule(pl.LightningDataModule):
         self.variant = variant
         self.test_root = test_root
         self.augment = augment
+        self.augmentation_config = augmentation_config
         if train_images_per_epoch is not None and train_images_per_epoch < 1:
             raise ValueError("train_images_per_epoch must be positive or None")
         if val_images_per_epoch is not None and val_images_per_epoch < 1:
@@ -143,7 +145,7 @@ class CardDataModule(pl.LightningDataModule):
     def setup(self, stage: str | None = None) -> None:
         dataset = CocoCardDataset(self.train_root, self.variant)
         augmented_dataset = CocoCardDataset(self.train_root, self.variant,
-                                           CardAugmentation(self.seed) if self.augment else None)
+                                           CardAugmentation(self.seed, self.augmentation_config) if self.augment else None)
         if self.val_root is not None:
             if self.val_root.resolve() == self.train_root.resolve():
                 raise ValueError("Training and validation roots must differ")
