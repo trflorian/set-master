@@ -7,13 +7,14 @@ import cv2
 import torch
 
 from set_master.training.model import CardDetector, DEFAULT_REPO
+from set_master.paths import RUNS_DIR
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Predict card boxes and save crops for stage two")
     parser.add_argument("--checkpoint", type=Path, required=True)
     parser.add_argument("--image", type=Path, required=True)
-    parser.add_argument("--output-dir", type=Path, default=Path("runs/card_predictions"))
+    parser.add_argument("--output-dir", type=Path, default=RUNS_DIR / "card_predictions")
     parser.add_argument("--score-threshold", type=float, default=0.5)
     parser.add_argument("--device", default="cpu")
     parser.add_argument("--dinov3-repo", type=Path, default=DEFAULT_REPO)

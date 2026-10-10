@@ -8,6 +8,7 @@ from lightning.pytorch.loggers import CSVLogger
 
 from set_master.training.data import CardDataModule
 from set_master.training.model import CardDetector, DEFAULT_REPO, DEFAULT_WEIGHTS
+from set_master.paths import RUNS_DIR
 
 
 def main() -> None:
@@ -17,7 +18,7 @@ def main() -> None:
     parser.add_argument("--val-fraction", type=float, default=0.2)
     parser.add_argument("--weights", type=Path, default=DEFAULT_WEIGHTS)
     parser.add_argument("--dinov3-repo", type=Path, default=DEFAULT_REPO)
-    parser.add_argument("--output-dir", type=Path, default=Path("runs/card_detector"))
+    parser.add_argument("--output-dir", type=Path, default=RUNS_DIR / "card_detector")
     parser.add_argument("--batch-size", type=int, default=2)
     parser.add_argument("--num-workers", type=int, default=4)
     parser.add_argument("--epochs", type=int, default=20)

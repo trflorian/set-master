@@ -12,11 +12,11 @@ from torchvision.models.detection.anchor_utils import AnchorGenerator
 from torchvision.ops import FeaturePyramidNetwork, MultiScaleRoIAlign
 
 from set_master.training.data import DetectionBatch
+from set_master.paths import DINOV3_REPO_DIR, MODELS_DIR
 
 
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
-DEFAULT_WEIGHTS = PROJECT_ROOT / "models/dinov3_convnext_tiny_pretrain_lvd1689m-21b726bb.pth"
-DEFAULT_REPO = PROJECT_ROOT / "src/dinov3"
+DEFAULT_WEIGHTS = MODELS_DIR / "dinov3_convnext_tiny_pretrain_lvd1689m-21b726bb.pth"
+DEFAULT_REPO = DINOV3_REPO_DIR
 
 
 class FrozenDinoFPN(nn.Module):

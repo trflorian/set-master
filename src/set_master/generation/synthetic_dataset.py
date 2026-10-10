@@ -11,11 +11,12 @@ import numpy as np
 from set_master.generation.card import draw_card, draw_card_surface
 from set_master.generation.features import FeatureStyle
 from set_master.models import Card, Color, Number, Shading, ShadingPattern, Shape
+from set_master.paths import SYNTHETIC_DATASETS_DIR
 
 
 @dataclass(frozen=True)
 class DatasetConfig:
-    output_root: Path = Path("data/synthetic_datasets")
+    output_root: Path = SYNTHETIC_DATASETS_DIR
     run_name: str | None = None
     image_count: int = 100
     image_width: int = 1280
