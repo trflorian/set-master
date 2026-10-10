@@ -132,6 +132,8 @@ data/
 
 # Test output
 tests/output/
+runs/
+models/*.pth
 
 # Misc
 results/*

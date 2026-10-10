@@ -11,6 +11,15 @@ dependencies = [
     "opencv-python>=4.11.0.86",
 ]
 
+[project.optional-dependencies]
+training = [
+    "lightning>=2.5",
+    "pycocotools>=2.0.10",
+    "torch>=2.7",
+    "torchmetrics>=1.7",
+    "torchvision>=0.22",
+]
+
 [build-system]
 requires = ["uv_build>=0.9.8,<0.10.0"]
 build-backend = "uv_build"
