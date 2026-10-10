@@ -40,7 +40,8 @@ class GeometryMetrics:
                     self.matched_ious.append(float(overlaps[row, column]))
                     if self.variant in (DetectorVariant.CORNERS, DetectorVariant.QUADRILATERAL):
                         diagonal = np.linalg.norm(expected[column].max(axis=0) - expected[column].min(axis=0))
-                        error = np.linalg.norm(predicted[row] - expected[column], axis=1).mean()
+                        error = min(np.linalg.norm(predicted[row] - np.roll(expected[column], shift, axis=0), axis=1).mean()
+                                    for shift in (0, 2))
                         self.corner_errors.append(float(error / max(diagonal, 1)))
 
     def compute(self) -> dict[str, float]:
