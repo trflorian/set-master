@@ -1,7 +1,7 @@
 import cv2
 import numpy as np
 
-from set_master.generation.features import draw_single_feature
+from set_master.generation.features import FeatureStyle, draw_single_feature
 from set_master.models import Card
 
 
@@ -76,7 +76,11 @@ def draw_card(
     img: np.ndarray,
     card: Card,
     position: tuple[int, int] | None = None,
-    size: tuple[int, int] = (300, 200),
+    size: tuple[int, int] = (200, 300),
+    feature_size: tuple[int, int] | None = None,
+    symbol_spacing: int | None = None,
+    corner_radius: int = 50,
+    feature_style: FeatureStyle = FeatureStyle(),
 ) -> None:
     """
     Draw a card with its features on the given image.
@@ -92,24 +96,26 @@ def draw_card(
         img,
         size=size,
         position=position,
+        corner_radius=corner_radius,
     )
 
     num_features = card.number.value
 
-    feature_width = size[1] // 3
-    feature_height = size[1] * 2 // 3
-    spacing = size[0] // (num_features + 1)
+    if feature_size is None:
+        feature_size = (size[0] // 2, size[1] // 6)
+    spacing = symbol_spacing if symbol_spacing is not None else size[1] // (num_features + 1)
 
     for i in range(num_features):
         feature_position = (
-            position[0] - size[0] // 2 + spacing * (i + 1),
-            position[1],
+            position[0],
+            position[1] - spacing * (num_features - 1) // 2 + spacing * i,
         )
         draw_single_feature(
             img,
             position=feature_position,
-            size=(feature_width, feature_height),
+            size=feature_size,
             shape=card.shape,
             color=card.color,
             shading=card.shading,
+            style=feature_style,
         )

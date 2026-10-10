@@ -9,7 +9,7 @@ from set_master.models import Card, Color, Number, Shading, Shape
 
 
 OUTPUT_DIR = Path(__file__).parent / "output"
-IMAGE_SIZE = (1440, 2560)
+IMAGE_SIZE = (1440, 960)
 
 
 class TestGeneratedCardGrids(unittest.TestCase):
@@ -19,7 +19,7 @@ class TestGeneratedCardGrids(unittest.TestCase):
         cell_width = IMAGE_SIZE[1] // 3
         cell_height = IMAGE_SIZE[0] // 3
         card_height = cell_height - 100
-        card_size = (min(cell_width - 48, round(card_height * 1.5)), card_height)
+        card_size = (min(cell_width - 48, round(card_height * 2 / 3)), card_height)
 
         for color in Color:
             with self.subTest(color=color):
