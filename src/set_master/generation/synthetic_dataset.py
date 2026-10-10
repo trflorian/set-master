@@ -22,18 +22,18 @@ class DatasetConfig:
     image_height: int = 720
     cards_per_image: tuple[int, int] = (3, 7)
     card_width: tuple[int, int] = (100, 170)
-    card_height: tuple[int, int] = (150, 255)
+    card_aspect_ratio: tuple[float, float] = (0.64, 0.69)
     rotation_degrees: tuple[float, float] = (-25.0, 25.0)
     feature_count: tuple[int, int] = (1, 3)
-    feature_width_ratio: tuple[float, float] = (0.42, 0.62)
-    feature_height_ratio: tuple[float, float] = (0.12, 0.20)
-    symbol_spacing_ratio: tuple[float, float] = (0.85, 1.15)
-    corner_radius_ratio: tuple[float, float] = (0.12, 0.22)
-    stripe_spacing: tuple[int, int] = (6, 14)
-    line_thickness: tuple[int, int] = (1, 3)
-    squiggle_amplitude: tuple[float, float] = (0.06, 0.18)
-    squiggle_waves: tuple[float, float] = (0.75, 1.5)
-    squiggle_thickness: tuple[float, float] = (0.48, 0.72)
+    feature_width_ratio: tuple[float, float] = (0.60, 0.68)
+    feature_height_ratio: tuple[float, float] = (0.16, 0.20)
+    symbol_spacing_ratio: tuple[float, float] = (0.95, 1.05)
+    corner_radius_ratio: tuple[float, float] = (0.035, 0.055)
+    stripe_spacing: tuple[int, int] = (4, 6)
+    line_thickness: tuple[int, int] = (1, 2)
+    squiggle_amplitude: tuple[float, float] = (0.16, 0.20)
+    squiggle_waves: tuple[float, float] = (0.95, 1.05)
+    squiggle_thickness: tuple[float, float] = (0.60, 0.70)
     background_gray: int = 185
     shapes: tuple[Shape, ...] = tuple(Shape)
     colors: tuple[Color, ...] = tuple(Color)
@@ -52,7 +52,7 @@ class DatasetConfig:
         if self.run_name is not None and (not self.run_name or Path(self.run_name).name != self.run_name):
             raise ValueError("Run name must be a non-empty directory name")
         for name in (
-            "cards_per_image", "card_width", "card_height", "rotation_degrees",
+            "cards_per_image", "card_width", "card_aspect_ratio", "rotation_degrees",
             "feature_count", "feature_width_ratio", "feature_height_ratio",
             "symbol_spacing_ratio", "corner_radius_ratio", "stripe_spacing",
             "line_thickness", "squiggle_amplitude", "squiggle_waves",
@@ -61,6 +61,8 @@ class DatasetConfig:
             low, high = getattr(self, name)
             if low > high:
                 raise ValueError(f"{name} minimum cannot exceed its maximum")
+        if self.card_width[0] < 1 or self.card_aspect_ratio[0] <= 0:
+            raise ValueError("Card width and width/height aspect ratio must be positive")
         for name in ("shapes", "colors", "shadings", "shading_patterns"):
             if not getattr(self, name):
                 raise ValueError(f"At least one value must be selected for {name}")
@@ -151,9 +153,9 @@ def generate_coco_dataset(config: DatasetConfig) -> Path:
             placed = False
             for _ in range(config.placement_attempts):
                 width = rng.randint(*config.card_width)
-                height = rng.randint(*config.card_height)
+                height = round(width / rng.uniform(*config.card_aspect_ratio))
                 number = Number(rng.randint(*config.feature_count))
-                spacing = height / (number.value + 1) * rng.uniform(*config.symbol_spacing_ratio)
+                spacing = height * 0.24 * rng.uniform(*config.symbol_spacing_ratio)
                 feature_size = (
                     max(8, round(width * rng.uniform(*config.feature_width_ratio))),
                     max(8, round(height * rng.uniform(*config.feature_height_ratio))),

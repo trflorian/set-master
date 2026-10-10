@@ -8,31 +8,38 @@ from set_master.models import Color, Shading, ShadingPattern, Shape
 @dataclass(frozen=True)
 class FeatureStyle:
     shading_pattern: ShadingPattern = ShadingPattern.STRIPED_HORIZONTAL
-    stripe_spacing: int = 8
+    stripe_spacing: int = 5
     line_thickness: int = 2
-    squiggle_amplitude: float = 0.12
+    squiggle_amplitude: float = 0.18
     squiggle_waves: float = 1.0
-    squiggle_thickness: float = 0.58
+    squiggle_thickness: float = 0.65
 
 
 def _squiggle_mask(size: tuple[int, int], style: FeatureStyle) -> np.ndarray:
     width, height = size
-    mask = np.zeros((height, width), dtype=np.uint8)
-    thickness = max(1, min(round(height * style.squiggle_thickness), round(height * 0.9)))
-    t = np.linspace(0, 1, max(24, width))
-    radius = thickness // 2
-    x = np.round(radius + t * (width - 1 - 2 * radius)).astype(np.int32)
-    y = np.round(
-        (height - 1) / 2
-        + np.sin(t * 2 * np.pi * style.squiggle_waves)
-        * height
-        * style.squiggle_amplitude
-    ).astype(np.int32)
-    points = np.column_stack((x, y)).reshape((-1, 1, 2))
-    cv2.polylines(mask, [points], False, 255, thickness, cv2.LINE_AA)
-    cv2.circle(mask, (int(x[0]), int(y[0])), radius, 255, -1, cv2.LINE_AA)
-    cv2.circle(mask, (int(x[-1]), int(y[-1])), radius, 255, -1, cv2.LINE_AA)
-    return mask
+    scale = 4
+    mask = np.zeros((height * scale, width * scale), dtype=np.uint8)
+    # Cubic boundaries reproduce the broad, curved ends and narrow middle in the photos.
+    segments = np.asarray([
+        [(0.04, 0.76), (-0.08, 0.16), (0.20, 0.02), (0.45, 0.25)],
+        [(0.45, 0.25), (0.70, 0.48), (0.78, 0.18), (0.90, 0.12)],
+        [(0.90, 0.12), (1.08, 0.04), (1.04, 0.72), (0.85, 0.87)],
+        [(0.85, 0.87), (0.62, 1.08), (0.36, 0.62), (0.19, 0.78)],
+        [(0.19, 0.78), (0.05, 0.97), (0.02, 0.91), (0.04, 0.76)],
+    ])
+    t = np.linspace(0, 1, max(24, width // 2))[:, None]
+    points = np.concatenate([
+        (1-t)**3 * p[0] + 3*(1-t)**2*t*p[1] + 3*(1-t)*t**2*p[2] + t**3*p[3]
+        for p in segments
+    ])
+    points[:, 1] = (
+        0.5 + (points[:, 1] - 0.5) * style.squiggle_thickness / 0.65
+        + np.sin(points[:, 0] * 2 * np.pi * style.squiggle_waves)
+        * (style.squiggle_amplitude - 0.18)
+    )
+    points = np.round(points * (width * scale - 1, height * scale - 1)).astype(np.int32)
+    cv2.fillPoly(mask, [points], 255, cv2.LINE_AA)
+    return cv2.resize(mask, (width, height), interpolation=cv2.INTER_AREA)
 
 
 def draw_single_feature(
@@ -58,6 +65,16 @@ def draw_single_feature(
         )
     elif shape == Shape.ELLIPSE:
         cv2.ellipse(mask, position, (width // 2, height // 2), 0, 0, 360, 255, -1, cv2.LINE_AA)
+    elif shape == Shape.DIAMOND:
+        x, y = position
+        points = np.asarray([(x-width//2, y), (x, y-height//2), (x+width//2, y), (x, y+height//2)], np.int32)
+        cv2.fillPoly(mask, [points], 255, cv2.LINE_AA)
+    elif shape == Shape.CAPSULE:
+        radius = min(width, height) // 2
+        x, y = position
+        cv2.rectangle(mask, (x-width//2+radius, y-height//2), (x+width//2-radius, y+height//2), 255, -1)
+        for end_x in (x-width//2+radius, x+width//2-radius):
+            cv2.circle(mask, (end_x, y), radius, 255, -1, cv2.LINE_AA)
     elif shape == Shape.SQUIGGLE:
         local_mask = _squiggle_mask(size, style)
         x0, y0 = position[0] - width // 2, position[1] - height // 2
@@ -94,7 +111,7 @@ def draw_single_feature(
                     x0, x1 = max(0, coordinate), min(img.shape[1], coordinate + border)
                     pattern_mask[:, x0:x1] = 255
         elif style.shading_pattern == ShadingPattern.DOTTED:
-            radius = max(1, border)
+            radius = max(1, border // 2)
             y_start, y_end = position[1] - height // 2, position[1] + height // 2 + 1
             x_start, x_end = position[0] - width // 2, position[0] + width // 2 + 1
             spacing = max(1, style.stripe_spacing)
@@ -103,7 +120,8 @@ def draw_single_feature(
                     cv2.circle(pattern_mask, (x, y), radius, 255, -1, cv2.LINE_AA)
         else:
             raise ValueError(f"Unsupported shading pattern: {style.shading_pattern}")
-        paint_mask[cv2.bitwise_and(inner, pattern_mask) > 0] = 0
+        paint_mask[inner > 0] = 0
+        paint_mask[cv2.bitwise_and(inner, pattern_mask) > 0] = 255
 
     alpha = paint_mask.astype(np.float32)[..., None] / 255
     img[:] = (img * (1 - alpha) + np.asarray(color.value, dtype=np.float32) * alpha).astype(np.uint8)

@@ -9,7 +9,7 @@ def draw_card_surface(
     img: np.ndarray,
     position: tuple[int, int],
     size: tuple[int, int],
-    corner_radius: int = 50,
+    corner_radius: int = 8,
 ) -> None:
     """
     Draw a card shape with rounded corners on the given image.
@@ -79,7 +79,7 @@ def draw_card(
     size: tuple[int, int] = (200, 300),
     feature_size: tuple[int, int] | None = None,
     symbol_spacing: int | None = None,
-    corner_radius: int = 50,
+    corner_radius: int | None = None,
     feature_style: FeatureStyle = FeatureStyle(),
 ) -> None:
     """
@@ -96,14 +96,14 @@ def draw_card(
         img,
         size=size,
         position=position,
-        corner_radius=corner_radius,
+        corner_radius=corner_radius if corner_radius is not None else max(1, round(min(size) * 0.045)),
     )
 
     num_features = card.number.value
 
     if feature_size is None:
-        feature_size = (size[0] // 2, size[1] // 6)
-    spacing = symbol_spacing if symbol_spacing is not None else size[1] // (num_features + 1)
+        feature_size = (round(size[0] * 0.64), round(size[1] * 0.18))
+    spacing = symbol_spacing if symbol_spacing is not None else round(size[1] * 0.24)
 
     for i in range(num_features):
         feature_position = (

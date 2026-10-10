@@ -7,7 +7,7 @@ from set_master.generation.features import FeatureStyle
 from set_master.models import Card, Color, Number, Shading, ShadingPattern, Shape
 
 
-IMAGE_SIZE = (1440, 720)
+IMAGE_SIZE = (1440, 1100)
 
 
 def test_draw_card_variants_for_each_color(output_dir: Path) -> None:

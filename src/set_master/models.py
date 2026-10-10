@@ -5,6 +5,8 @@ from enum import Enum
 class Shape(Enum):
     RECTANGLE = "rectangle"
     ELLIPSE = "ellipse"
+    DIAMOND = "diamond"
+    CAPSULE = "capsule"
     SQUIGGLE = "squiggle"
 
 
