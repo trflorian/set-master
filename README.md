@@ -54,6 +54,23 @@ The training notebook links to the run dashboard. Server data persists across
 The real labels cover fully visible face-up cards; deck tops and partial cards
 are excluded. Generated data, runs, and pretrained weights are gitignored.
 
+Corner and quadrilateral targets use `corner_order: "card_relative"`: clockwise
+vertices with edges 0–1 and 2–3 corresponding to the card's short sides, regardless
+of their projected lengths. Training accepts a 180° rotation of this order but
+penalizes 90° rotations. Augmentation preserves the short-side identity, and crops
+use the predicted order directly. Retrain models previously trained on image-relative
+corner labels before using their predictions for orientation.
+
+New synthetic datasets preserve the original sprite corner identities through all
+render transforms. To migrate older synthetic runs with saved transforms:
+
+```sh
+uv run scripts/migrate_synthetic_orientation.py --dataset data/synthetic_datasets/RUN_NAME
+```
+
+The real source annotations store visually reviewed card-relative corners. Exporting
+the testset preserves that order; geometry fitting alone cannot provide these labels.
+
 ## Visual tests
 
 ```sh

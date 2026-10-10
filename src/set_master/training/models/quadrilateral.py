@@ -45,7 +45,11 @@ class QuadrilateralRoIHeads(nn.Module):
             expected = (points[..., :2] - center[:, None]) / size[:, None]
             visible = points[..., 2] > 0
             losses['loss_quadrilateral'] = (
-                F.smooth_l1_loss(offsets[visible], expected[visible], beta=1 / 9)
+                torch.stack([
+                    (F.smooth_l1_loss(offsets, expected.roll(shift, dims=1), beta=1 / 9, reduction='none')
+                     * visible.roll(shift, dims=1)[..., None]).sum(dim=(1, 2))
+                    for shift in (0, 2)
+                ], dim=1).amin(dim=1).sum() / (visible.sum() * 2)
                 if visible.any() else offsets.sum() * 0
             )
         else:

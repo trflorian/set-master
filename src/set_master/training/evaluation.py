@@ -69,6 +69,9 @@ def prediction_overlay(
     elif "keypoints" in prediction and "keypoints" in target:
         for points in target["keypoints"][..., :2].cpu().numpy():
             cv2.polylines(preview, [np.rint(points * scale).astype(np.int32)], True, (0, 180, 0), 2)
+            axis = np.rint(np.array([(points[0] + points[1]) / 2,
+                                    (points[2] + points[3]) / 2]) * scale).astype(np.int32)
+            cv2.line(preview, tuple(axis[0]), tuple(axis[1]), (0, 180, 0), 4, cv2.LINE_AA)
     for index, (box, score) in enumerate(zip(prediction["boxes"].cpu(), prediction["scores"].cpu())):
         if score < score_threshold:
             continue
@@ -82,6 +85,10 @@ def prediction_overlay(
         if points is not None:
             display_points = np.rint(points * scale).astype(np.int32)
             cv2.polylines(preview, [display_points], True, (0, 0, 220), 2)
+            if 'keypoints' in prediction:
+                axis = np.rint(np.array([(points[0] + points[1]) / 2,
+                                        (points[2] + points[3]) / 2]) * scale).astype(np.int32)
+                cv2.line(preview, tuple(axis[0]), tuple(axis[1]), (0, 0, 220), 2, cv2.LINE_AA)
             for corner_index, (cx, cy) in enumerate(display_points):
                 cv2.circle(preview, (int(cx), int(cy)), 4, (0, 0, 220), -1)
                 cv2.putText(preview, str(corner_index + 1), (int(cx) + 4, int(cy)), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 0, 220), 1)
@@ -172,7 +179,8 @@ def evaluate_detector(
                         if not cv2.isContourConvex(np.float32(points)) or abs(cv2.contourArea(np.float32(points))) < 1:
                             continue
                         crop_dir.mkdir(parents=True, exist_ok=True)
-                        if not cv2.imwrite(str(crop_dir / f"card_{index:03d}.png"), rectify_card(source, points)):
+                        if not cv2.imwrite(str(crop_dir / f"card_{index:03d}.png"),
+                                           rectify_card(source, points, card_relative='keypoints' in prediction)):
                             raise OSError(f"Could not save crop in {crop_dir}")
             if progress:
                 print(f"Evaluated {len(rows)}/{len(subset)} images", end="\r")

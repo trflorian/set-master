@@ -14,7 +14,7 @@ from set_master.generation.features import FeatureStyle
 from set_master.models import BackgroundSplit, BackgroundType, Card, Color, Number, Shading, ShadingPattern, Shape, SceneLayout
 from set_master.paths import BACKGROUNDS_DIR, SYNTHETIC_DATASETS_DIR
 from set_master.generation.backgrounds import BackgroundRecord, crop_background, load_backgrounds
-from set_master.geometry import geometry_annotation, order_corners
+from set_master.geometry import geometry_annotation
 from set_master.annotation_visualization import draw_annotation_geometry
 
 
@@ -171,7 +171,7 @@ def _rotated_card(
         flags=cv2.INTER_NEAREST, borderMode=cv2.BORDER_CONSTANT, borderValue=0,
     )
     corners = cv2.perspectiveTransform(corners.reshape(1, 4, 2), transform)[0]
-    return rotated_sprite, rotated_mask, order_corners(corners)
+    return rotated_sprite, rotated_mask, corners
 
 
 def _annotation_polygon(mask: np.ndarray, offset_x: int, offset_y: int) -> list[float]:
@@ -225,7 +225,7 @@ def _finish_scene(
             raise ValueError("Visible card has no valid segmentation contour")
         corners = np.float32(annotation["keypoints"]).reshape(4, 3)[:, :2]
         corners = cv2.perspectiveTransform(corners[None], transform)[0]
-        annotation.update(geometry_annotation(corners, np.concatenate(polygons).astype(np.float32)))
+        annotation.update(geometry_annotation(corners, np.concatenate(polygons).astype(np.float32), card_relative=True))
         # Rounded corners need a small neighborhood when checking whether another card covers them.
         keypoints = np.float32(annotation["keypoints"]).reshape(4, 3)
         for point in keypoints:
@@ -446,8 +446,10 @@ def generate_coco_dataset(config: DatasetConfig) -> Path:
                 annotation.update(geometry_annotation(
                     corners + np.float32([x, y]),
                     np.float32(annotation["segmentation"][0]).reshape(-1, 2),
+                    card_relative=True,
                 ))
                 annotation["geometry_source"] = "render_transform"
+                annotation["orientation_source"] = "render_transform"
                 annotation["render_transform"] = {"rotation_degrees": angle,
                                                   "skew_x_degrees": skew_angles[0],
                                                   "skew_y_degrees": skew_angles[1],

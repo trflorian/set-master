@@ -89,12 +89,13 @@ def polygon_iou(first: NDArray[np.float32], second: NDArray[np.float32]) -> floa
 
 def rectify_card(
     image: NDArray[np.uint8], corners: NDArray[np.float32], size: tuple[int, int] = (256, 384),
+    *, card_relative: bool = False,
 ) -> NDArray[np.uint8]:
-    source = order_corners(corners)
+    source = np.asarray(corners, dtype=np.float32).reshape(4, 2) if card_relative else order_corners(corners)
     if not cv2.isContourConvex(source) or abs(cv2.contourArea(source)) < 1:
         raise ValueError("Card corners must form a nondegenerate convex quadrilateral")
     # Align the shorter edge with crop width; this does not infer printed orientation.
-    if np.linalg.norm(source[1] - source[0]) > np.linalg.norm(source[2] - source[1]):
+    if not card_relative and np.linalg.norm(source[1] - source[0]) > np.linalg.norm(source[2] - source[1]):
         source = np.roll(source, -1, axis=0)
     width, height = size
     destination = np.float32([[0, 0], [width - 1, 0], [width - 1, height - 1], [0, height - 1]])
@@ -104,10 +105,12 @@ def rectify_card(
 
 def geometry_annotation(
     corners: NDArray[np.float32], polygon: NDArray[np.float32],
-) -> dict[str, list[float] | int]:
-    corners = order_corners(corners)
+    *, card_relative: bool = False,
+) -> dict[str, list[float] | int | str]:
+    corners = np.asarray(corners, dtype=np.float32).reshape(4, 2) if card_relative else order_corners(corners)
     return {
         "keypoints": [value for x, y in corners for value in (float(x), float(y), 2.0)],
         "num_keypoints": 4,
         "oriented_bbox": oriented_box(polygon),
+        "corner_order": "card_relative" if card_relative else "image_relative",
     }

@@ -49,6 +49,8 @@ def export_testset(output_dir: Path) -> None:
         debug = image.copy()
         if "corners" not in record:
             raise ValueError(f"Missing explicit corner annotations in {source}")
+        if record.get('corner_order') != 'card_relative':
+            raise ValueError(f'Missing reviewed card-relative orientation in {source}')
         for instance_id, vertices in enumerate(record["polygons"], start=1):
             polygon = np.asarray(vertices, dtype=np.int32)
             if (
@@ -78,8 +80,10 @@ def export_testset(output_dir: Path) -> None:
                 "segmentation": [polygon.reshape(-1).tolist()],
                 "bbox": [x, y, w, h], "area": area, "iscrowd": 0,
                 "instance_id": instance_id,
-                **geometry_annotation(np.float32(record["corners"][instance_id - 1]), polygon.astype(np.float32)),
+                **geometry_annotation(np.float32(record["corners"][instance_id - 1]), polygon.astype(np.float32),
+                                      card_relative=True),
                 "geometry_source": record["corner_annotation_method"],
+                "orientation_source": record['orientation_annotation_method'],
             })
             annotation_id += 1
         debug[union > 0] = cv2.addWeighted(debug, 0.7, colors, 0.3, 0)[union > 0]

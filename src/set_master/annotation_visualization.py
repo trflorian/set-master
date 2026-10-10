@@ -37,6 +37,10 @@ def draw_annotation_geometry(
             corners = np.asarray(annotation["keypoints"], dtype=np.float32).reshape(4, 3)[:, :2]
             corners = np.rint(corners * scale).astype(np.int32)
             cv2.polylines(preview, [corners], True, (0, 165, 255), 2)
+            if annotation.get('corner_order') == 'card_relative':
+                axis = np.rint([(corners[0] + corners[1]) / 2,
+                                (corners[2] + corners[3]) / 2]).astype(np.int32)
+                cv2.line(preview, tuple(axis[0]), tuple(axis[1]), (255, 0, 255), 3, cv2.LINE_AA)
             for corner_index, (cx, cy) in enumerate(corners, start=1):
                 cv2.circle(preview, (int(cx), int(cy)), 4, (0, 165, 255), -1)
                 cv2.putText(preview, str(corner_index), (int(cx) + 5, int(cy) - 5),
@@ -44,7 +48,8 @@ def draw_annotation_geometry(
     preview = cv2.copyMakeBorder(preview, 0, 32, 0, 0, cv2.BORDER_CONSTANT, value=(30, 30, 30))
     position = 10
     for label, color in [("BBox", (0, 180, 0)), ("OBB", (255, 100, 30)),
-                         ("Corners 1-4", (0, 165, 255)), ("Mask", (255, 255, 0))]:
+                         ("Corners 1-4", (0, 165, 255)), ("Portrait axis", (255, 0, 255)),
+                         ("Mask", (255, 255, 0))]:
         cv2.putText(preview, label, (position, preview.shape[0] - 10),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
         position += cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)[0][0] + 22

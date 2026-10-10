@@ -55,6 +55,9 @@ class CocoCardDataset(Dataset[tuple[Tensor, DetectionTarget]]):
             areas.append(annotation.get("area", w * h))
             crowds.append(annotation.get("iscrowd", 0))
             if "keypoints" in annotation:
+                if (self.variant in (DetectorVariant.CORNERS, DetectorVariant.QUADRILATERAL)
+                        and annotation.get('corner_order') != 'card_relative'):
+                    raise ValueError(f'Missing card-relative corner order in {path}; migrate orientation annotations first')
                 keypoints.append(annotation["keypoints"])
             if "oriented_bbox" in annotation:
                 oriented_boxes.append(annotation["oriented_bbox"])

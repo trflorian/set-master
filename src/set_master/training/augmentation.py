@@ -174,6 +174,13 @@ class CardAugmentation:
             ordered, ordered_visibility = [], []
             for quad, flags in zip(corners, visibility):
                 new_quad = order_corners(quad)
+                # Flips reverse winding; retain corner zero so the short-edge identity survives.
+                start = np.linalg.norm(new_quad - quad[0], axis=1).argmin()
+                new_quad = np.roll(new_quad, -int(start), axis=0)
+                # A reflection swaps the two neighbors of corner zero. Keep its original
+                # short-side neighbor as corner one, allowing a different starting vertex.
+                if np.linalg.norm(new_quad[1] - quad[1]) > np.linalg.norm(new_quad[3] - quad[1]):
+                    new_quad = np.roll(new_quad, -3, axis=0)
                 permutation = np.linalg.norm(new_quad[:, None] - quad[None], axis=2).argmin(axis=1)
                 flags = flags[permutation]
                 outside = ((new_quad[:, 0] < 0) | (new_quad[:, 0] >= width) |

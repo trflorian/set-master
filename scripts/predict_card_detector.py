@@ -51,13 +51,17 @@ def main() -> None:
             points = np.ascontiguousarray(prediction["keypoints"][index, :, :2].cpu().numpy())
         crop = image[top:bottom, left:right]
         if points is not None and cv2.isContourConvex(points) and abs(cv2.contourArea(points)) >= 1:
-            crop = rectify_card(image, points)
+            crop = rectify_card(image, points, card_relative='keypoints' in prediction)
         if not cv2.imwrite(str(crops_dir / crop_name), crop):
             raise OSError(f"Could not save crop {crop_name}")
         detections.append({"bbox_xyxy": box, "score": score, "crop_box_xyxy": crop_box, "crop": f"crops/{crop_name}"})
         if points is not None:
             detections[-1]["corners"] = points.tolist()
             cv2.polylines(debug, [points.round().astype("int32")], True, (0, 200, 0), 2)
+            if 'keypoints' in prediction:
+                axis = np.rint([(points[0] + points[1]) / 2,
+                                (points[2] + points[3]) / 2]).astype(np.int32)
+                cv2.line(debug, tuple(axis[0]), tuple(axis[1]), (255, 0, 255), 3, cv2.LINE_AA)
         cv2.rectangle(debug, (left, top), (right - 1, bottom - 1), (0, 200, 0), 2)
         cv2.putText(debug, f"card {score:.2f}", (left, max(16, top - 6)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 200, 0), 1)
     (args.output_dir / "predictions.json").write_text(json.dumps({"image": str(args.image), "detections": detections}, indent=2) + "\n")
