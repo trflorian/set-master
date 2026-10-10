@@ -9,6 +9,7 @@ Synthetic SET card generation and a two-stage vision pipeline: locate cards, the
 | [tweak_features](notebooks/tweak_features.ipynb) | Adjust card geometry, symbols, and shading |
 | [generate_synthetic_dataset](notebooks/generate_synthetic_dataset.ipynb) | Generate images, binary masks, and COCO annotations |
 | [train_card_detector](notebooks/train_card_detector.ipynb) | Train and inspect the card detector |
+| [evaluate_card_detector](notebooks/evaluate_card_detector.ipynb) | Compare box metrics and prediction overlays on synthetic and real datasets |
 
 ## Training
 
