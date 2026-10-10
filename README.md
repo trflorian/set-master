@@ -13,7 +13,16 @@ Synthetic SET card generation and a two-stage vision pipeline: locate cards, the
 
 ## Training
 
-Stage one uses frozen DINOv3 ConvNeXt Tiny features with a trainable FPN/Faster R-CNN head. It predicts one class, `card`.
+Stage one uses frozen DINOv3 ConvNeXt Tiny features and a trainable FPN. All variants predict one class, `card`:
+
+| Variant | Head | Geometry |
+| --- | --- | --- |
+| `box` | Faster R-CNN | Axis-aligned boxes |
+| `oriented` | Dense FPN head with rotated NMS | Center, short width, long height, angle |
+| `corners` | Keypoint R-CNN | Four corner heatmaps and axis-aligned boxes |
+
+Shared code lives in `training/backbone.py`, `data.py`, `config.py`, and
+`evaluation.py`; variant implementations live in `training/models/`.
 
 PyTorch uses CUDA 12.6 wheels for compatibility with the GTX 1070 Ti. The training notebook requests one GPU with 32-bit precision.
 
@@ -27,16 +36,57 @@ DINOv3 source is pinned at `src/dinov3/`. Pretrained weights belong in
 
 In the training notebook, select a generated dataset and set `fast_dev_run = False` for full training. The default validation split is 20%; `val_data` selects a separate dataset.
 
-Runs under `runs/card_detector/` contain configuration, split IDs, CSV metrics, and best/last checkpoints. Validation reports box mAP, AP50, AP75, and recall. Set `resume_checkpoint` to resume a run.
+Select `variant` and `experiment_name` in the training notebook. Runs under
+`runs/card_detector/<variant>/<experiment>/version_N/` contain configuration,
+split IDs, CSV metrics, and best/last checkpoints. Geometry variants select the
+best checkpoint by geometry AP; the baseline uses box AP. Existing baseline
+checkpoints remain loadable. Set `resume_checkpoint` to resume a run.
+
+Evaluation loads the variant recorded in the selected checkpoint. All variants
+report box metrics; geometry variants also report rotated/polygon AP. Corners
+report mean corner error divided by the target diagonal, on polygon-IoU matches
+of at least 0.5. These are custom single-class geometry metrics, not COCO OKS.
+Overlays and rectified crops are saved for selected images. Evaluation folders
+include the variant, checkpoint experiment/run, checkpoint name, and dataset run.
+
+## Geometry annotations
+
+New synthetic datasets include exact transformed corners, polygon segmentation,
+and fitted oriented boxes. Rotation defaults to the full `[-180°, 180°]` range.
+Horizontal and vertical skew default to `[-15°, 15°]`; both skew ranges and
+perspective jitter are configurable in the generator notebook. A shared
+homography transforms pixels, masks, and corners without clipping the card.
+Debug images show green axis boxes, blue oriented boxes, orange corners
+numbered 1–4, and cyan mask outlines.
+
+Corners run clockwise in image coordinates, starting at the smallest `x+y`.
+They describe virtual sharp card corners, independent of printed orientation.
+OBBs use `[cx, cy, short_width, long_height, angle_degrees]`; the width-axis angle
+is clockwise in image coordinates and lies in `[-90, 90)`.
+
+Real corners are estimated by fitting straight edges to the existing polygons
+and stored in `images/reference_cards.json`. They need manual review before
+using corner errors as a precise benchmark. Existing synthetic datasets can be
+upgraded explicitly; their fitted corners are estimates, not original render
+transforms:
+
+```sh
+uv run scripts/add_card_geometry.py --dataset data/synthetic_datasets/YOUR_RUN
+```
+
+Use the same dataset and split seed across experiments. The oriented experiment
+uses a dense detection head, so comparisons also include that architecture
+difference. Its OpenCV rotated suppression runs on the CPU.
 
 ### CLI
 
 ```sh
 uv run --extra training scripts/train_card_detector.py \
-  --train-data data/synthetic_datasets/YOUR_RUN
+  --train-data data/synthetic_datasets/YOUR_RUN \
+  --variant corners --experiment-name YOUR_EXPERIMENT
 
 uv run --extra training scripts/predict_card_detector.py \
-  --checkpoint runs/card_detector/version_0/checkpoints/last.ckpt \
+  --checkpoint runs/card_detector/corners/YOUR_EXPERIMENT/version_0/checkpoints/last.ckpt \
   --image images/000008.jpg
 ```
 

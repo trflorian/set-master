@@ -7,6 +7,7 @@ import lightning.pytorch as pl
 import torch
 from torch import Tensor
 from torch.utils.data import DataLoader, Dataset, Subset
+from set_master.training.config import DetectorVariant
 
 
 DetectionTarget = dict[str, Tensor]
@@ -16,8 +17,9 @@ DetectionBatch = tuple[list[Tensor], list[DetectionTarget]]
 class CocoCardDataset(Dataset[tuple[Tensor, DetectionTarget]]):
     """Read whole-card boxes; RGB conversion and normalization happen separately."""
 
-    def __init__(self, root: Path) -> None:
+    def __init__(self, root: Path, variant: DetectorVariant = DetectorVariant.BOX) -> None:
         self.root = root
+        self.variant = variant
         coco = json.loads((root / "annotations.json").read_text())
         card_categories = {item["id"] for item in coco["categories"] if item["name"] == "card"}
         if not card_categories:
@@ -38,7 +40,7 @@ class CocoCardDataset(Dataset[tuple[Tensor, DetectionTarget]]):
         if image is None:
             raise FileNotFoundError(f"Could not read {path}")
         height, width = image.shape[:2]
-        boxes, areas, crowds = [], [], []
+        boxes, areas, crowds, keypoints, oriented_boxes = [], [], [], [], []
         for annotation in self.annotations[info["id"]]:
             x, y, w, h = annotation["bbox"]
             if w <= 0 or h <= 0 or x < 0 or y < 0 or x + w > width or y + h > height:
@@ -46,6 +48,10 @@ class CocoCardDataset(Dataset[tuple[Tensor, DetectionTarget]]):
             boxes.append([x, y, x + w, y + h])
             areas.append(annotation.get("area", w * h))
             crowds.append(annotation.get("iscrowd", 0))
+            if "keypoints" in annotation:
+                keypoints.append(annotation["keypoints"])
+            if "oriented_bbox" in annotation:
+                oriented_boxes.append(annotation["oriented_bbox"])
         rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         tensor = torch.from_numpy(rgb).permute(2, 0, 1).float().div(255)
         target = {
@@ -55,6 +61,14 @@ class CocoCardDataset(Dataset[tuple[Tensor, DetectionTarget]]):
             "area": torch.tensor(areas, dtype=torch.float32),
             "iscrowd": torch.tensor(crowds, dtype=torch.int64),
         }
+        if self.variant == DetectorVariant.CORNERS and len(keypoints) != len(boxes):
+            raise ValueError(f"Missing corner targets in {path}; add geometry annotations first")
+        if self.variant == DetectorVariant.ORIENTED and len(oriented_boxes) != len(boxes):
+            raise ValueError(f"Missing oriented targets in {path}; add geometry annotations first")
+        if len(keypoints) == len(boxes):
+            target["keypoints"] = torch.tensor(keypoints, dtype=torch.float32).reshape(-1, 4, 3)
+        if len(oriented_boxes) == len(boxes):
+            target["oriented_boxes"] = torch.tensor(oriented_boxes, dtype=torch.float32).reshape(-1, 5)
         return tensor, target
 
 
@@ -67,6 +81,7 @@ class CardDataModule(pl.LightningDataModule):
     def __init__(
         self, train_root: Path, val_root: Path | None = None, batch_size: int = 2,
         num_workers: int = 4, val_fraction: float = 0.2, seed: int = 42,
+        variant: DetectorVariant = DetectorVariant.BOX,
     ) -> None:
         super().__init__()
         self.train_root = train_root
@@ -75,14 +90,15 @@ class CardDataModule(pl.LightningDataModule):
         self.num_workers = num_workers
         self.val_fraction = val_fraction
         self.seed = seed
+        self.variant = variant
 
     def setup(self, stage: str | None = None) -> None:
-        dataset = CocoCardDataset(self.train_root)
+        dataset = CocoCardDataset(self.train_root, self.variant)
         if self.val_root is not None:
             if self.val_root.resolve() == self.train_root.resolve():
                 raise ValueError("Training and validation roots must differ")
             self.train_dataset = dataset
-            self.val_dataset = CocoCardDataset(self.val_root)
+            self.val_dataset = CocoCardDataset(self.val_root, self.variant)
             train_indices = list(range(len(dataset)))
             val_indices = list(range(len(self.val_dataset)))
             val_source = self.val_dataset

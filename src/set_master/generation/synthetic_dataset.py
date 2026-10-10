@@ -12,6 +12,8 @@ from set_master.generation.card import draw_card, draw_card_surface
 from set_master.generation.features import FeatureStyle
 from set_master.models import Card, Color, Number, Shading, ShadingPattern, Shape
 from set_master.paths import SYNTHETIC_DATASETS_DIR
+from set_master.geometry import geometry_annotation, order_corners
+from set_master.annotation_visualization import draw_annotation_geometry
 
 
 @dataclass(frozen=True)
@@ -24,7 +26,10 @@ class DatasetConfig:
     cards_per_image: tuple[int, int] = (3, 7)
     card_width: tuple[int, int] = (100, 170)
     card_aspect_ratio: tuple[float, float] = (0.64, 0.69)
-    rotation_degrees: tuple[float, float] = (-25.0, 25.0)
+    rotation_degrees: tuple[float, float] = (-180.0, 180.0)
+    skew_x_degrees: tuple[float, float] = (-15.0, 15.0)
+    skew_y_degrees: tuple[float, float] = (-15.0, 15.0)
+    perspective_jitter: tuple[float, float] = (0.0, 0.12)
     feature_count: tuple[int, int] = (1, 3)
     feature_width_ratio: tuple[float, float] = (0.60, 0.68)
     feature_height_ratio: tuple[float, float] = (0.16, 0.20)
@@ -53,7 +58,8 @@ class DatasetConfig:
         if self.run_name is not None and (not self.run_name or Path(self.run_name).name != self.run_name):
             raise ValueError("Run name must be a non-empty directory name")
         for name in (
-            "cards_per_image", "card_width", "card_aspect_ratio", "rotation_degrees",
+            "cards_per_image", "card_width", "card_aspect_ratio", "rotation_degrees", "perspective_jitter",
+            "skew_x_degrees", "skew_y_degrees",
             "feature_count", "feature_width_ratio", "feature_height_ratio",
             "symbol_spacing_ratio", "corner_radius_ratio", "stripe_spacing",
             "line_thickness", "squiggle_amplitude", "squiggle_waves",
@@ -64,6 +70,11 @@ class DatasetConfig:
                 raise ValueError(f"{name} minimum cannot exceed its maximum")
         if self.card_width[0] < 1 or self.card_aspect_ratio[0] <= 0:
             raise ValueError("Card width and width/height aspect ratio must be positive")
+        if not 0 <= self.perspective_jitter[0] <= self.perspective_jitter[1] <= 0.3:
+            raise ValueError("Perspective jitter must be between 0 and 0.3")
+        for name in ("skew_x_degrees", "skew_y_degrees"):
+            if not -30 <= getattr(self, name)[0] <= getattr(self, name)[1] <= 30:
+                raise ValueError(f"{name} must stay between -30 and 30 degrees")
         for name in ("shapes", "colors", "shadings", "shading_patterns"):
             if not getattr(self, name):
                 raise ValueError(f"At least one value must be selected for {name}")
@@ -78,7 +89,9 @@ def _rotated_card(
     symbol_spacing: int,
     style: FeatureStyle,
     angle: float,
-) -> tuple[np.ndarray, np.ndarray]:
+    perspective_offsets: np.ndarray | None = None,
+    skew_angles: tuple[float, float] = (0.0, 0.0),
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     sprite = np.full((height, width, 3), 255, dtype=np.uint8)
     draw_card(
         sprite,
@@ -92,24 +105,32 @@ def _rotated_card(
     surface = np.zeros_like(sprite)
     draw_card_surface(surface, (width // 2, height // 2), (width, height), corner_radius)
     source_mask = cv2.cvtColor(surface, cv2.COLOR_BGR2GRAY)
-
-    radians = math.radians(angle)
-    rotated_width = math.ceil(height * abs(math.sin(radians)) + width * abs(math.cos(radians)))
-    rotated_height = math.ceil(height * abs(math.cos(radians)) + width * abs(math.sin(radians)))
-    center = (width / 2, height / 2)
-    transform = cv2.getRotationMatrix2D(center, angle, 1.0)
-    transform[0, 2] += rotated_width / 2 - center[0]
-    transform[1, 2] += rotated_height / 2 - center[1]
-    rotated_sprite = cv2.warpAffine(
+    corners = np.float32([[0, 0], [width - 1, 0], [width - 1, height - 1], [0, height - 1]])
+    perspective = np.eye(3)
+    if perspective_offsets is not None:
+        perspective = cv2.getPerspectiveTransform(corners, corners + perspective_offsets)
+    skew_x, skew_y = (math.tan(math.radians(value)) for value in skew_angles)
+    shear = np.array([[1, skew_x, 0], [skew_y, 1, 0], [0, 0, 1]], dtype=np.float64)
+    rotation = np.eye(3)
+    rotation[:2] = cv2.getRotationMatrix2D((0, 0), angle, 1.0)
+    transform = rotation @ shear @ perspective
+    transformed_corners = cv2.perspectiveTransform(corners.reshape(1, 4, 2), transform)[0]
+    minimum = np.floor(transformed_corners.min(axis=0)) - 2
+    maximum = np.ceil(transformed_corners.max(axis=0)) + 2
+    rotated_width, rotated_height = (maximum - minimum + 1).astype(int).tolist()
+    translation = np.array([[1, 0, -minimum[0]], [0, 1, -minimum[1]], [0, 0, 1]])
+    transform = translation @ transform
+    rotated_sprite = cv2.warpPerspective(
         sprite, transform, (rotated_width, rotated_height),
         flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT,
         borderValue=(255, 255, 255),
     )
-    rotated_mask = cv2.warpAffine(
+    rotated_mask = cv2.warpPerspective(
         source_mask, transform, (rotated_width, rotated_height),
         flags=cv2.INTER_NEAREST, borderMode=cv2.BORDER_CONSTANT, borderValue=0,
     )
-    return rotated_sprite, rotated_mask
+    corners = cv2.perspectiveTransform(corners.reshape(1, 4, 2), transform)[0]
+    return rotated_sprite, rotated_mask, order_corners(corners)
 
 
 def _annotation_polygon(mask: np.ndarray, offset_x: int, offset_y: int) -> list[float]:
@@ -133,6 +154,7 @@ def generate_coco_dataset(config: DatasetConfig) -> Path:
     run_dir = config.output_root / run_name
     (run_dir / "images").mkdir(parents=True, exist_ok=False)
     (run_dir / "masks").mkdir()
+    (run_dir / "debug").mkdir()
 
     images: list[dict[str, object]] = []
     annotations: list[dict[str, object]] = []
@@ -177,8 +199,16 @@ def generate_coco_dataset(config: DatasetConfig) -> Path:
                     number=number,
                 )
                 angle = rng.uniform(*config.rotation_degrees)
-                rotated_sprite, rotated_mask = _rotated_card(
-                    card, width, height, radius, feature_size, round(spacing), style, angle
+                skew_angles = (rng.uniform(*config.skew_x_degrees), rng.uniform(*config.skew_y_degrees))
+                jitter = rng.uniform(*config.perspective_jitter)
+                offsets = np.float32([
+                    [rng.uniform(0, jitter) * width, rng.uniform(0, jitter) * height],
+                    [-rng.uniform(0, jitter) * width, rng.uniform(0, jitter) * height],
+                    [-rng.uniform(0, jitter) * width, -rng.uniform(0, jitter) * height],
+                    [rng.uniform(0, jitter) * width, -rng.uniform(0, jitter) * height],
+                ])
+                rotated_sprite, rotated_mask, corners = _rotated_card(
+                    card, width, height, radius, feature_size, round(spacing), style, angle, offsets, skew_angles,
                 )
                 card_height, card_width = rotated_mask.shape
                 if card_width > config.image_width or card_height > config.image_height:
@@ -209,6 +239,15 @@ def generate_coco_dataset(config: DatasetConfig) -> Path:
                     "segmentation": [_annotation_polygon(rotated_mask, x, y)],
                     "iscrowd": 0,
                 }
+                annotation.update(geometry_annotation(
+                    corners + np.float32([x, y]),
+                    np.float32(annotation["segmentation"][0]).reshape(-1, 2),
+                ))
+                annotation["geometry_source"] = "render_transform"
+                annotation["render_transform"] = {"rotation_degrees": angle,
+                                                  "skew_x_degrees": skew_angles[0],
+                                                  "skew_y_degrees": skew_angles[1],
+                                                  "perspective_jitter": jitter}
                 image_annotations.append(annotation)
                 annotation_id += 1
                 placed = True
@@ -226,6 +265,8 @@ def generate_coco_dataset(config: DatasetConfig) -> Path:
             raise OSError(f"Failed to write image {image_name}")
         if not cv2.imwrite(str(run_dir / "masks" / mask_name), binary_mask):
             raise OSError(f"Failed to write binary mask {mask_name}")
+        if not cv2.imwrite(str(run_dir / "debug" / image_name), draw_annotation_geometry(image, image_annotations)):
+            raise OSError(f"Failed to write debug overlay {image_name}")
 
         images.append({
             "id": image_id,
@@ -233,6 +274,7 @@ def generate_coco_dataset(config: DatasetConfig) -> Path:
             "height": config.image_height,
             "file_name": f"images/{image_name}",
             "mask_file": f"masks/{mask_name}",
+            "debug_file": f"debug/{image_name}",
         })
         annotations.extend(image_annotations)
 
@@ -241,7 +283,9 @@ def generate_coco_dataset(config: DatasetConfig) -> Path:
         "licenses": [],
         "images": images,
         "annotations": annotations,
-        "categories": [{"id": 1, "name": "card", "supercategory": "object"}],
+        "categories": [{"id": 1, "name": "card", "supercategory": "object",
+                        "keypoints": ["top_left", "top_right", "bottom_right", "bottom_left"],
+                        "skeleton": [[1, 2], [2, 3], [3, 4], [4, 1]]}],
     }
     (run_dir / "annotations.json").write_text(json.dumps(coco, indent=2), encoding="utf-8")
     return run_dir

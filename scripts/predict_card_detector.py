@@ -5,8 +5,11 @@ from pathlib import Path
 
 import cv2
 import torch
+import numpy as np
 
-from set_master.training.model import CardDetector, DEFAULT_REPO
+from set_master.training.model import DEFAULT_REPO
+from set_master.training.models.factory import load_detector
+from set_master.geometry import obb_corners, rectify_card
 from set_master.paths import RUNS_DIR
 
 
@@ -24,10 +27,7 @@ def main() -> None:
     image = cv2.imread(str(args.image))
     if image is None:
         raise FileNotFoundError(f"Could not read {args.image}")
-    model = CardDetector.load_from_checkpoint(
-        args.checkpoint, map_location="cpu", weights_only=True,
-        repo_path=str(args.dinov3_repo.expanduser().resolve()), initialize_pretrained=False,
-    ).eval().to(args.device)
+    model = load_detector(args.checkpoint, args.dinov3_repo.expanduser().resolve()).to(args.device)
     rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
     tensor = torch.from_numpy(rgb).permute(2, 0, 1).float().div(255).to(args.device)
     with torch.inference_mode():
@@ -37,16 +37,27 @@ def main() -> None:
     crops_dir.mkdir(exist_ok=True)
     debug = image.copy()
     detections = []
-    for box, score in zip(prediction["boxes"].cpu().tolist(), prediction["scores"].cpu().tolist()):
+    for index, (box, score) in enumerate(zip(prediction["boxes"].cpu().tolist(), prediction["scores"].cpu().tolist())):
         if score < args.score_threshold:
             continue
         x1, y1, x2, y2 = box
         crop_box = [math.floor(x1), math.floor(y1), math.ceil(x2), math.ceil(y2)]
         left, top, right, bottom = crop_box
         crop_name = f"card_{len(detections):03d}.png"
-        if not cv2.imwrite(str(crops_dir / crop_name), image[top:bottom, left:right]):
+        points = None
+        if "oriented_boxes" in prediction:
+            points = obb_corners(prediction["oriented_boxes"][index].cpu().tolist())
+        elif "keypoints" in prediction:
+            points = np.ascontiguousarray(prediction["keypoints"][index, :, :2].cpu().numpy())
+        crop = image[top:bottom, left:right]
+        if points is not None and cv2.isContourConvex(points) and abs(cv2.contourArea(points)) >= 1:
+            crop = rectify_card(image, points)
+        if not cv2.imwrite(str(crops_dir / crop_name), crop):
             raise OSError(f"Could not save crop {crop_name}")
         detections.append({"bbox_xyxy": box, "score": score, "crop_box_xyxy": crop_box, "crop": f"crops/{crop_name}"})
+        if points is not None:
+            detections[-1]["corners"] = points.tolist()
+            cv2.polylines(debug, [points.round().astype("int32")], True, (0, 200, 0), 2)
         cv2.rectangle(debug, (left, top), (right - 1, bottom - 1), (0, 200, 0), 2)
         cv2.putText(debug, f"card {score:.2f}", (left, max(16, top - 6)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 200, 0), 1)
     (args.output_dir / "predictions.json").write_text(json.dumps({"image": str(args.image), "detections": detections}, indent=2) + "\n")

@@ -6,6 +6,7 @@ import cv2
 import numpy as np
 
 from set_master.generation.synthetic_dataset import DatasetConfig, generate_coco_dataset
+from set_master.annotation_visualization import draw_annotation_geometry
 
 
 PALETTE = [
@@ -80,6 +81,7 @@ def test_generate_default_image_and_debug_annotations(output_dir: Path) -> None:
     assert intersection / union >= 0.95
 
     debug = cv2.addWeighted(overlay, 0.45, debug, 0.55, 0)
+    debug = draw_annotation_geometry(debug, annotations)
     debug_path = run_dir / "debug.png"
     assert cv2.imwrite(str(debug_path), debug)
     assert (run_dir / image_info["file_name"]).is_file()

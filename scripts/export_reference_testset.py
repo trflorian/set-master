@@ -5,6 +5,8 @@ from pathlib import Path
 
 import cv2
 import numpy as np
+from set_master.geometry import geometry_annotation
+from set_master.annotation_visualization import draw_annotation_geometry
 
 from set_master.paths import (
     REAL_TESTSET_DIR,
@@ -45,6 +47,8 @@ def export_testset(output_dir: Path) -> None:
         instances = np.zeros((height, width), dtype=np.uint16)
         colors = np.zeros_like(image)
         debug = image.copy()
+        if "corners" not in record:
+            raise ValueError(f"Missing explicit corner annotations in {source}")
         for instance_id, vertices in enumerate(record["polygons"], start=1):
             polygon = np.asarray(vertices, dtype=np.int32)
             if (
@@ -69,20 +73,18 @@ def export_testset(output_dir: Path) -> None:
                 cv2.COLOR_HSV2BGR,
             )[0, 0])
             colors[mask > 0] = color
-            cv2.polylines(debug, [polygon], True, color, max(2, width // 700))
-            cv2.rectangle(debug, (x, y), (x + w - 1, y + h - 1), color, max(2, width // 700))
-            cv2.putText(debug, str(instance_id), (x, max(25, y - 8)),
-                        cv2.FONT_HERSHEY_SIMPLEX, width / 2000, color, max(2, width // 900))
             coco["annotations"].append({
                 "id": annotation_id, "image_id": image_id, "category_id": 1,
                 "segmentation": [polygon.reshape(-1).tolist()],
                 "bbox": [x, y, w, h], "area": area, "iscrowd": 0,
                 "instance_id": instance_id,
+                **geometry_annotation(np.float32(record["corners"][instance_id - 1]), polygon.astype(np.float32)),
+                "geometry_source": record["corner_annotation_method"],
             })
             annotation_id += 1
         debug[union > 0] = cv2.addWeighted(debug, 0.7, colors, 0.3, 0)[union > 0]
-        scale = min(1.0, 1440 / max(width, height))
-        debug = cv2.resize(debug, (round(width * scale), round(height * scale)))
+        image_annotations = [item for item in coco["annotations"] if item["image_id"] == image_id]
+        debug = draw_annotation_geometry(debug, image_annotations)
         for filename, pixels in ((mask_file, union), (instance_file, instances),
                                  (f"debug/{stem}.jpg", debug)):
             if not cv2.imwrite(str(output_dir / filename), pixels):
@@ -90,6 +92,7 @@ def export_testset(output_dir: Path) -> None:
         coco["images"].append({
             "id": image_id, "file_name": image_file, "width": width, "height": height,
             "mask_file": mask_file, "instance_mask_file": instance_file,
+            "debug_file": f"debug/{stem}.jpg",
             "source_file_name": source.name,
             "original_source_file_name": record["original_source"],
         })
@@ -100,6 +103,8 @@ def export_testset(output_dir: Path) -> None:
             "annotation_method": record["annotation_method"],
             "card_count": len(record["polygons"]),
         })
+    coco["categories"][0].update(keypoints=["top_left", "top_right", "bottom_right", "bottom_left"],
+                                 skeleton=[[1, 2], [2, 3], [3, 4], [4, 1]])
     (output_dir / "annotations.json").write_text(json.dumps(coco, indent=2) + "\n")
     (output_dir / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
     print(f"Exported {len(manifest)} images and {annotation_id - 1} cards to {output_dir}")
