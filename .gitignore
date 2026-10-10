@@ -130,6 +130,7 @@ dmypy.json
 data/backbone_ckpt
 data/Train_Dataset
 data/Test_Dataset
+tests/output/
 results/*
 snapshots
 snapshots/*

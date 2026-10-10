@@ -76,7 +76,7 @@ def draw_card(
     img: np.ndarray,
     card: Card,
     position: tuple[int, int] | None = None,
-    size: tuple[int, int] = (200, 300),
+    size: tuple[int, int] = (300, 200),
 ) -> None:
     """
     Draw a card with its features on the given image.
@@ -96,14 +96,14 @@ def draw_card(
 
     num_features = card.number.value
 
-    feature_width = size[0] // 2
-    feature_height = size[1] // 6
-    spacing = size[1] // (num_features + 1)
+    feature_width = size[1] // 3
+    feature_height = size[1] * 2 // 3
+    spacing = size[0] // (num_features + 1)
 
     for i in range(num_features):
         feature_position = (
-            position[0],
-            position[1] - size[1] // 2 + spacing * (i + 1),
+            position[0] - size[0] // 2 + spacing * (i + 1),
+            position[1],
         )
         draw_single_feature(
             img,
