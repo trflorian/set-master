@@ -36,6 +36,7 @@ def main() -> None:
     parser.add_argument("--test-overlay-ids", type=int, nargs="*", default=None)
     parser.add_argument("--val-fraction", type=float, default=0.1)
     parser.add_argument("--train-images-per-epoch", type=int, default=200)
+    parser.add_argument("--val-images-per-epoch", type=int, default=20)
     parser.add_argument("--weights", type=Path, default=DEFAULT_WEIGHTS)
     parser.add_argument("--dinov3-repo", type=Path, default=DEFAULT_REPO)
     parser.add_argument("--output-dir", type=Path, default=RUNS_DIR / "card_detector")
@@ -65,7 +66,7 @@ def main() -> None:
     data = CardDataModule(
         args.train_data, args.val_data, args.batch_size, args.num_workers, args.val_fraction, args.seed,
         variant=variant, test_root=args.test_data, augment=not args.no_augmentation,
-        train_images_per_epoch=args.train_images_per_epoch,
+        train_images_per_epoch=args.train_images_per_epoch, val_images_per_epoch=args.val_images_per_epoch,
     )
     data.setup("fit")
     model = create_detector(

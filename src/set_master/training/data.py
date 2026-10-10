@@ -120,6 +120,7 @@ class CardDataModule(pl.LightningDataModule):
         test_root: Path | None = None,
         augment: bool = True,
         train_images_per_epoch: int | None = 200,
+        val_images_per_epoch: int | None = 20,
     ) -> None:
         super().__init__()
         self.train_root = train_root
@@ -133,6 +134,9 @@ class CardDataModule(pl.LightningDataModule):
         self.augment = augment
         if train_images_per_epoch is not None and train_images_per_epoch < 1:
             raise ValueError("train_images_per_epoch must be positive or None")
+        if val_images_per_epoch is not None and val_images_per_epoch < 1:
+            raise ValueError("val_images_per_epoch must be positive or None")
+        self.val_images_per_epoch = val_images_per_epoch
         self.train_images_per_epoch = train_images_per_epoch
         self.test_dataset = CocoCardDataset(test_root, variant) if test_root is not None else None
 
@@ -159,12 +163,19 @@ class CardDataModule(pl.LightningDataModule):
             val_source = dataset
         if not len(self.train_dataset) or not len(self.val_dataset):
             raise ValueError("Training and validation datasets must both contain images")
+        val_count = min(len(self.val_dataset), self.val_images_per_epoch or len(self.val_dataset))
+        # Keep the same validation subset across epochs so checkpoint comparisons stay consistent.
+        self.val_epoch_indices = sorted(torch.randperm(
+            len(self.val_dataset), generator=torch.Generator().manual_seed(self.seed + 1),
+        )[:val_count].tolist())
         self.split_manifest = {
             "seed": self.seed,
             "train_root": str(self.train_root.resolve()),
             "val_root": str((self.val_root or self.train_root).resolve()),
             "train_image_ids": [dataset.images[i]["id"] for i in train_indices],
             "val_image_ids": [val_source.images[i]["id"] for i in val_indices],
+            "val_images_per_epoch": val_count,
+            "val_epoch_image_ids": [val_source.images[val_indices[i]]["id"] for i in self.val_epoch_indices],
             "train_images_per_epoch": min(len(self.train_dataset), self.train_images_per_epoch)
             if self.train_images_per_epoch is not None else len(self.train_dataset),
         }
@@ -181,8 +192,9 @@ class CardDataModule(pl.LightningDataModule):
 
     def val_dataloader(self) -> DataLoader:
         return DataLoader(
-            self.val_dataset, batch_size=self.batch_size, num_workers=self.num_workers,
-            collate_fn=collate_detection, persistent_workers=self.num_workers > 0,
+            self.val_dataset, batch_size=self.batch_size, sampler=self.val_epoch_indices,
+            num_workers=self.num_workers, collate_fn=collate_detection,
+            persistent_workers=self.num_workers > 0,
         )
 
     def test_dataloader(self) -> DataLoader:
