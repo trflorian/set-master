@@ -1,15 +1,13 @@
 from dataclasses import dataclass
-from typing import Literal
-
 import cv2
 import numpy as np
 
-from set_master.models import Color, Shading, Shape
+from set_master.models import Color, Shading, ShadingPattern, Shape
 
 
 @dataclass(frozen=True)
 class FeatureStyle:
-    stripe_direction: Literal["horizontal", "vertical"] = "horizontal"
+    shading_pattern: ShadingPattern = ShadingPattern.STRIPED_HORIZONTAL
     stripe_spacing: int = 8
     line_thickness: int = 2
     squiggle_amplitude: float = 0.12
@@ -46,7 +44,7 @@ def draw_single_feature(
     shading: Shading,
     style: FeatureStyle = FeatureStyle(),
 ) -> None:
-    """Draw a Set symbol, applying its solid, striped, or open shading."""
+    """Draw a Set symbol with solid, patterned shaded, or open shading."""
     width, height = size
     mask = np.zeros(img.shape[:2], dtype=np.uint8)
     if shape == Shape.RECTANGLE:
@@ -78,19 +76,34 @@ def draw_single_feature(
         return
 
     paint_mask = mask.copy()
-    if shading == Shading.STRIPED:
+    if shading == Shading.SHADED:
         border = max(1, style.line_thickness)
         inner = cv2.erode(mask, np.ones((border * 2 + 1, border * 2 + 1), np.uint8))
-        if style.stripe_direction == "horizontal":
+        pattern_mask = np.zeros_like(mask)
+        if style.shading_pattern in (ShadingPattern.STRIPED_HORIZONTAL, ShadingPattern.STRIPED_VERTICAL):
+            horizontal = style.shading_pattern == ShadingPattern.STRIPED_HORIZONTAL
+            if horizontal:
+                start, end = position[1] - height // 2, position[1] + height // 2 + 1
+            else:
+                start, end = position[0] - width // 2, position[0] + width // 2 + 1
+            for coordinate in range(start, end, max(1, style.stripe_spacing)):
+                if horizontal:
+                    y0, y1 = max(0, coordinate), min(img.shape[0], coordinate + border)
+                    pattern_mask[y0:y1] = 255
+                else:
+                    x0, x1 = max(0, coordinate), min(img.shape[1], coordinate + border)
+                    pattern_mask[:, x0:x1] = 255
+        elif style.shading_pattern == ShadingPattern.DOTTED:
+            radius = max(1, border)
             y_start, y_end = position[1] - height // 2, position[1] + height // 2 + 1
-            for y in range(y_start, y_end, style.stripe_spacing):
-                y0, y1 = max(0, y), min(img.shape[0], y + style.line_thickness)
-                paint_mask[y0:y1][inner[y0:y1] > 0] = 0
-        else:
             x_start, x_end = position[0] - width // 2, position[0] + width // 2 + 1
-            for x in range(x_start, x_end, style.stripe_spacing):
-                x0, x1 = max(0, x), min(img.shape[1], x + style.line_thickness)
-                paint_mask[:, x0:x1][inner[:, x0:x1] > 0] = 0
+            spacing = max(1, style.stripe_spacing)
+            for y in range(y_start + spacing // 2, y_end, spacing):
+                for x in range(x_start + spacing // 2, x_end, spacing):
+                    cv2.circle(pattern_mask, (x, y), radius, 255, -1, cv2.LINE_AA)
+        else:
+            raise ValueError(f"Unsupported shading pattern: {style.shading_pattern}")
+        paint_mask[cv2.bitwise_and(inner, pattern_mask) > 0] = 0
 
     alpha = paint_mask.astype(np.float32)[..., None] / 255
     img[:] = (img * (1 - alpha) + np.asarray(color.value, dtype=np.float32) * alpha).astype(np.uint8)

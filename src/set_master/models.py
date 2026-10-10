@@ -16,8 +16,14 @@ class Color(Enum):
 
 class Shading(Enum):
     SOLID = "solid"
-    STRIPED = "striped"
+    SHADED = "shaded"
     OPEN = "open"
+
+
+class ShadingPattern(Enum):
+    STRIPED_HORIZONTAL = "striped_horizontal"
+    STRIPED_VERTICAL = "striped_vertical"
+    DOTTED = "dotted"
 
 
 class Number(Enum):
