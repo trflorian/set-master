@@ -1,7 +1,7 @@
 import json
 import math
 import random
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
 
@@ -10,8 +10,9 @@ import numpy as np
 
 from set_master.generation.card import draw_card, draw_card_surface
 from set_master.generation.features import FeatureStyle
-from set_master.models import Card, Color, Number, Shading, ShadingPattern, Shape
-from set_master.paths import SYNTHETIC_DATASETS_DIR
+from set_master.models import BackgroundSplit, BackgroundType, Card, Color, Number, Shading, ShadingPattern, Shape
+from set_master.paths import BACKGROUNDS_DIR, SYNTHETIC_DATASETS_DIR
+from set_master.generation.backgrounds import BackgroundRecord, crop_background, load_backgrounds
 from set_master.geometry import geometry_annotation, order_corners
 from set_master.annotation_visualization import draw_annotation_geometry
 
@@ -41,6 +42,10 @@ class DatasetConfig:
     squiggle_waves: tuple[float, float] = (0.95, 1.05)
     squiggle_thickness: tuple[float, float] = (0.60, 0.70)
     background_gray: int = 185
+    background_type: BackgroundType = BackgroundType.GRAY
+    background_dir: Path = BACKGROUNDS_DIR
+    background_split: BackgroundSplit = BackgroundSplit.TRAIN
+    real_background_probability: float = 0.5
     shapes: tuple[Shape, ...] = tuple(Shape)
     colors: tuple[Color, ...] = tuple(Color)
     shadings: tuple[Shading, ...] = tuple(Shading)
@@ -53,6 +58,8 @@ class DatasetConfig:
             raise ValueError("Image count and dimensions must be positive")
         if not 0 <= self.background_gray <= 255:
             raise ValueError("Background gray must be between 0 and 255")
+        if not 0 <= self.real_background_probability <= 1:
+            raise ValueError("Real background probability must be between 0 and 1")
         if self.placement_attempts < 1:
             raise ValueError("Placement attempts must be positive")
         if self.run_name is not None and (not self.run_name or Path(self.run_name).name != self.run_name):
@@ -150,6 +157,16 @@ def _annotation_polygon(mask: np.ndarray, offset_x: int, offset_y: int) -> list[
 def generate_coco_dataset(config: DatasetConfig) -> Path:
     """Create a new synthetic card dataset and return its run directory."""
     rng = random.Random(config.seed)
+    background_rng = random.Random(config.seed + 1)
+    backgrounds: list[BackgroundRecord] = []
+    if config.background_type != BackgroundType.GRAY:
+        backgrounds = [record for record in load_backgrounds(config.background_dir)
+                       if record.approved and record.split == config.background_split.value]
+        if not backgrounds:
+            raise ValueError(f"No approved {config.background_split.value} backgrounds in {config.background_dir}. "
+                             "Download and review backgrounds in download_backgrounds.ipynb first.")
+    license_keys = sorted({(record.license, record.license_url) for record in backgrounds})
+    license_ids = {key: index + 1 for index, key in enumerate(license_keys)}
     run_name = config.run_name or datetime.now().strftime("run_%Y%m%d_%H%M%S_%f")
     run_dir = config.output_root / run_name
     (run_dir / "images").mkdir(parents=True, exist_ok=False)
@@ -167,6 +184,17 @@ def generate_coco_dataset(config: DatasetConfig) -> Path:
             config.background_gray,
             dtype=np.uint8,
         )
+        background = None
+        if (config.background_type == BackgroundType.REAL_SCENE or
+                config.background_type == BackgroundType.MIXED and
+                background_rng.random() < config.real_background_probability):
+            background = background_rng.choice(backgrounds)
+            path = config.background_dir / background.file_name
+            source = cv2.imread(str(path))
+            if source is None:
+                raise FileNotFoundError(f"Could not read background {path}")
+            image = crop_background(source, config.image_width, config.image_height,
+                                    background_rng.random(), background_rng.random())
         binary_mask = np.zeros((config.image_height, config.image_width), dtype=np.uint8)
         occupied = np.zeros((config.image_height, config.image_width), dtype=np.uint8)
         target_count = rng.randint(*config.cards_per_image)
@@ -268,19 +296,23 @@ def generate_coco_dataset(config: DatasetConfig) -> Path:
         if not cv2.imwrite(str(run_dir / "debug" / image_name), draw_annotation_geometry(image, image_annotations)):
             raise OSError(f"Failed to write debug overlay {image_name}")
 
-        images.append({
+        image_info: dict[str, object] = {
             "id": image_id,
             "width": config.image_width,
             "height": config.image_height,
             "file_name": f"images/{image_name}",
             "mask_file": f"masks/{mask_name}",
             "debug_file": f"debug/{image_name}",
-        })
+        }
+        if background is not None:
+            image_info["background"] = asdict(background)
+            image_info["license"] = license_ids[(background.license, background.license_url)]
+        images.append(image_info)
         annotations.extend(image_annotations)
 
     coco = {
         "info": {"description": "Synthetic top-down SET card scenes", "version": "1.0"},
-        "licenses": [],
+        "licenses": [{"id": license_ids[key], "name": key[0], "url": key[1]} for key in license_keys],
         "images": images,
         "annotations": annotations,
         "categories": [{"id": 1, "name": "card", "supercategory": "object",
@@ -288,4 +320,5 @@ def generate_coco_dataset(config: DatasetConfig) -> Path:
                         "skeleton": [[1, 2], [2, 3], [3, 4], [4, 1]]}],
     }
     (run_dir / "annotations.json").write_text(json.dumps(coco, indent=2), encoding="utf-8")
+    (run_dir / "config.json").write_text(json.dumps(asdict(config), default=str, indent=2) + "\n")
     return run_dir

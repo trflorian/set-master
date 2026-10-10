@@ -1,5 +1,6 @@
 import json
 from collections import defaultdict
+from collections.abc import Iterator
 from pathlib import Path
 
 import cv2
@@ -7,7 +8,7 @@ import lightning.pytorch as pl
 import torch
 import numpy as np
 from torch import Tensor
-from torch.utils.data import DataLoader, Dataset, Subset, get_worker_info
+from torch.utils.data import DataLoader, Dataset, Sampler, Subset, get_worker_info
 from set_master.training.config import DetectorVariant
 from set_master.training.augmentation import CardAugmentation
 
@@ -90,13 +91,34 @@ def collate_detection(batch: list[tuple[Tensor, DetectionTarget]]) -> DetectionB
     return [item[0] for item in batch], [item[1] for item in batch]
 
 
+class EpochImageSampler(Sampler[int]):
+    """Sample a reproducible subset without replacement, varying with the epoch."""
+
+    def __init__(self, dataset_size: int, image_count: int, seed: int) -> None:
+        self.dataset_size = dataset_size
+        self.image_count = min(dataset_size, image_count)
+        self.seed = seed
+        self.epoch = 0
+
+    def set_epoch(self, epoch: int) -> None:
+        self.epoch = epoch
+
+    def __len__(self) -> int:
+        return self.image_count
+
+    def __iter__(self) -> Iterator[int]:
+        generator = torch.Generator().manual_seed(self.seed + self.epoch)
+        return iter(torch.randperm(self.dataset_size, generator=generator)[:self.image_count].tolist())
+
+
 class CardDataModule(pl.LightningDataModule):
     def __init__(
         self, train_root: Path, val_root: Path | None = None, batch_size: int = 2,
-        num_workers: int = 4, val_fraction: float = 0.2, seed: int = 42,
+        num_workers: int = 4, val_fraction: float = 0.1, seed: int = 42,
         variant: DetectorVariant = DetectorVariant.BOX,
         test_root: Path | None = None,
         augment: bool = True,
+        train_images_per_epoch: int | None = 200,
     ) -> None:
         super().__init__()
         self.train_root = train_root
@@ -108,6 +130,9 @@ class CardDataModule(pl.LightningDataModule):
         self.variant = variant
         self.test_root = test_root
         self.augment = augment
+        if train_images_per_epoch is not None and train_images_per_epoch < 1:
+            raise ValueError("train_images_per_epoch must be positive or None")
+        self.train_images_per_epoch = train_images_per_epoch
         self.test_dataset = CocoCardDataset(test_root, variant) if test_root is not None else None
 
     def setup(self, stage: str | None = None) -> None:
@@ -139,11 +164,15 @@ class CardDataModule(pl.LightningDataModule):
             "val_root": str((self.val_root or self.train_root).resolve()),
             "train_image_ids": [dataset.images[i]["id"] for i in train_indices],
             "val_image_ids": [val_source.images[i]["id"] for i in val_indices],
+            "train_images_per_epoch": min(len(self.train_dataset), self.train_images_per_epoch)
+            if self.train_images_per_epoch is not None else len(self.train_dataset),
         }
 
     def train_dataloader(self) -> DataLoader:
+        sampler = EpochImageSampler(len(self.train_dataset),
+                                    self.train_images_per_epoch or len(self.train_dataset), self.seed)
         return DataLoader(
-            self.train_dataset, batch_size=self.batch_size, shuffle=True,
+            self.train_dataset, batch_size=self.batch_size, sampler=sampler,
             num_workers=self.num_workers, collate_fn=collate_detection,
             persistent_workers=self.num_workers > 0,
             generator=torch.Generator().manual_seed(self.seed),

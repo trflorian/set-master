@@ -9,6 +9,7 @@ Use the notebooks for configuration, previews, and workflow documentation.
 | Notebook | Purpose |
 | --- | --- |
 | [Tweak features](notebooks/tweak_features.ipynb) | Adjust card geometry, symbols, and shading |
+| [Download backgrounds](notebooks/download_backgrounds.ipynb) | Download and review real tabletop backgrounds |
 | [Generate synthetic dataset](notebooks/generate_synthetic_dataset.ipynb) | Generate images, masks, and COCO annotations |
 | [Train card detector](notebooks/train_card_detector.ipynb) | Train box, oriented-box, or four-corner detectors |
 | [Evaluate card detector](notebooks/evaluate_card_detector.ipynb) | Evaluate synthetic and real data with prediction overlays |
@@ -45,6 +46,7 @@ The training notebook links to the run dashboard. Server data persists across
 
 - `images/`: reference photos and editable annotations in `reference_cards.json`.
 - `data/synthetic_datasets/`: generated dataset runs.
+- `data/backgrounds/tabletops/`: downloaded backgrounds and attribution manifest.
 - `data/testset/`: real evaluation data; rebuild with `uv run scripts/export_reference_testset.py`.
 - `runs/`: training checkpoints, metrics, preview grids, and evaluation overlays.
 

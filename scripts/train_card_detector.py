@@ -6,7 +6,7 @@ from pathlib import Path
 import lightning.pytorch as pl
 import wandb
 from lightning.pytorch.callbacks import EarlyStopping, LearningRateMonitor, ModelCheckpoint
-from lightning.pytorch.loggers import CSVLogger, WandbLogger
+from lightning.pytorch.loggers import CSVLogger
 
 from set_master.training.data import CardDataModule
 from set_master.training.model import DEFAULT_REPO, DEFAULT_WEIGHTS
@@ -14,6 +14,7 @@ from set_master.training.config import DetectorConfig, DetectorVariant
 from set_master.training.models.factory import create_detector
 from set_master.paths import REAL_TESTSET_DIR, RUNS_DIR
 from set_master.training.callbacks import EpochEvaluation
+from set_master.training.logging import create_wandb_logger
 
 
 def main() -> None:
@@ -33,7 +34,8 @@ def main() -> None:
     parser.add_argument("--iou-threshold", type=float, default=0.5)
     parser.add_argument("--validation-overlay-ids", type=int, nargs="*", default=None)
     parser.add_argument("--test-overlay-ids", type=int, nargs="*", default=None)
-    parser.add_argument("--val-fraction", type=float, default=0.2)
+    parser.add_argument("--val-fraction", type=float, default=0.1)
+    parser.add_argument("--train-images-per-epoch", type=int, default=200)
     parser.add_argument("--weights", type=Path, default=DEFAULT_WEIGHTS)
     parser.add_argument("--dinov3-repo", type=Path, default=DEFAULT_REPO)
     parser.add_argument("--output-dir", type=Path, default=RUNS_DIR / "card_detector")
@@ -63,6 +65,7 @@ def main() -> None:
     data = CardDataModule(
         args.train_data, args.val_data, args.batch_size, args.num_workers, args.val_fraction, args.seed,
         variant=variant, test_root=args.test_data, augment=not args.no_augmentation,
+        train_images_per_epoch=args.train_images_per_epoch,
     )
     data.setup("fit")
     model = create_detector(
@@ -74,11 +77,9 @@ def main() -> None:
     logger.log_hyperparams(model.hparams)
     run_dir = Path(logger.log_dir)
     run_dir.mkdir(parents=True, exist_ok=True)
-    tracker = WandbLogger(
-        name=args.experiment_name, project=args.wandb_project, entity=args.wandb_entity,
-        save_dir=str(run_dir), log_model=False,
-        settings=wandb.Settings(base_url=args.wandb_url, mode="online"),
-        tags=[variant.value],
+    tracker = create_wandb_logger(
+        run_dir, args.experiment_name, variant,
+        args.wandb_url, args.wandb_project, args.wandb_entity,
     )
     tracker.log_hyperparams({**dict(model.hparams), **json.loads(json.dumps(vars(args), default=str))})
     print(f"W&B dashboard: {tracker.experiment.url}")

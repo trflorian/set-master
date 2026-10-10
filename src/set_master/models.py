@@ -1,5 +1,16 @@
 from dataclasses import dataclass
-from enum import Enum
+from enum import Enum, StrEnum
+
+
+class BackgroundType(StrEnum):
+    GRAY = "gray"
+    REAL_SCENE = "real_scene"
+    MIXED = "mixed"
+
+
+class BackgroundSplit(StrEnum):
+    TRAIN = "train"
+    VALIDATION = "validation"
 
 
 class Shape(Enum):
