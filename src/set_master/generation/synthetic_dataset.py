@@ -26,7 +26,9 @@ class DatasetConfig:
     image_width: int = 1280
     image_height: int = 720
     cards_per_image: tuple[int, int] = (5, 15)
-    card_width: tuple[int, int] = (80, 130)
+    card_width: tuple[int, int] = (45, 215)
+    card_scale_jitter: float = 0.10
+    layout_orientations: tuple[int, ...] = (0, 90)
     card_aspect_ratio: tuple[float, float] = (0.64, 0.69)
     rotation_degrees: tuple[float, float] = (-180.0, 180.0)
     skew_x_degrees: tuple[float, float] = (-15.0, 15.0)
@@ -74,6 +76,10 @@ class DatasetConfig:
             raise ValueError("Background gray must be between 0 and 255")
         if not 0 <= self.real_background_probability <= 1:
             raise ValueError("Real background probability must be between 0 and 1")
+        if not 0 <= self.card_scale_jitter <= 0.3:
+            raise ValueError("Card scale jitter must be between zero and 0.3")
+        if not self.layout_orientations or any(angle not in (0, 90) for angle in self.layout_orientations):
+            raise ValueError("Select portrait (0) and/or landscape (90) layout orientations")
         if not self.layouts:
             raise ValueError("Select at least one scene layout")
         for name in ("scene_perspective", "layout_gap", "shadow_opacity", "illumination_strength", "glare_strength", "glare_radius_ratio"):
@@ -303,16 +309,30 @@ def generate_coco_dataset(config: DatasetConfig) -> Path:
         target_count = rng.randint(*config.cards_per_image)
         image_annotations = []
         layout = rng.choice(config.layouts)
-        columns = max(1, math.ceil(math.sqrt(target_count * config.image_width / config.image_height)))
+        layout_angle = rng.choice(config.layout_orientations)
+        aspect = rng.uniform(*config.card_aspect_ratio)
+        surface_ratio = aspect if layout_angle == 0 else 1 / aspect
+        columns = max(1, round(math.sqrt(target_count * config.image_width / config.image_height / surface_ratio)))
         rows = max(1, math.ceil(target_count / columns))
         gap = rng.uniform(*config.layout_gap)
-        layout_width = rng.randint(*config.card_width)
-        layout_height = round(layout_width / rng.uniform(*config.card_aspect_ratio))
-        fit = min(1.0, config.image_width / ((columns + 0.5) * layout_width * (1 + gap)),
-                  config.image_height / ((rows + 0.5) * layout_height * (1 + gap)))
+        if layout == SceneLayout.CLUSTERED:
+            gap += 0.20
+        layout_width = round(math.exp(rng.uniform(math.log(config.card_width[0]), math.log(config.card_width[1]))))
+        if layout == SceneLayout.SCATTERED and target_count:
+            # Random packing needs spare area; dense close-up grids can use much more of the canvas.
+            packing_width = math.sqrt(config.image_width * config.image_height * 0.25 * aspect / target_count)
+            layout_width = min(layout_width, max(config.card_width[0], round(packing_width)))
+        layout_height = round(layout_width / aspect)
+        surface_width, surface_height = ((layout_width, layout_height) if layout_angle == 0
+                                         else (layout_height, layout_width))
+        fit = (1.0 if layout == SceneLayout.SCATTERED else
+               min(1.0, config.image_width / (columns * surface_width * (1 + gap) + 10),
+                   config.image_height / (rows * surface_height * (1 + gap) + 10)))
         layout_width, layout_height = max(8, round(layout_width * fit)), max(12, round(layout_height * fit))
-        cell_width = layout_width * (1 + gap)
-        cell_height = layout_height * (1 + gap)
+        surface_width, surface_height = ((layout_width, layout_height) if layout_angle == 0
+                                         else (layout_height, layout_width))
+        cell_width = surface_width * (1 + gap)
+        cell_height = surface_height * (1 + gap)
         layout_left = (config.image_width - columns * cell_width) / 2
         layout_top = (config.image_height - rows * cell_height) / 2
         shadow_strength = rng.uniform(*config.shadow_opacity)
@@ -322,8 +342,9 @@ def generate_coco_dataset(config: DatasetConfig) -> Path:
             allow_overlap = rng.random() < config.overlap_probability
             placed = False
             for _ in range(config.placement_attempts):
-                width = rng.randint(*config.card_width)
-                height = round(width / rng.uniform(*config.card_aspect_ratio))
+                width = round(layout_width * rng.uniform(1 - config.card_scale_jitter, 1 + config.card_scale_jitter))
+                width = int(np.clip(width, *config.card_width))
+                height = round(width / aspect)
                 if layout != SceneLayout.SCATTERED:
                     width, height = layout_width, layout_height
                 number = Number(rng.randint(*config.feature_count))
@@ -348,7 +369,7 @@ def generate_coco_dataset(config: DatasetConfig) -> Path:
                     number=number,
                 )
                 angle = (rng.uniform(*config.rotation_degrees) if layout == SceneLayout.SCATTERED
-                         else rng.uniform(-config.layout_rotation_jitter, config.layout_rotation_jitter))
+                         else layout_angle + rng.uniform(-config.layout_rotation_jitter, config.layout_rotation_jitter))
                 skew_angles = (rng.uniform(*config.skew_x_degrees), rng.uniform(*config.skew_y_degrees))
                 jitter = rng.uniform(*config.perspective_jitter)
                 if layout != SceneLayout.SCATTERED:
@@ -372,8 +393,15 @@ def generate_coco_dataset(config: DatasetConfig) -> Path:
                     y = rng.randint(0, config.image_height - card_height)
                 else:
                     jitter = 0.18 if layout == SceneLayout.CLUSTERED else 0.025
-                    center_x = layout_left + (card_index % columns + 0.5) * cell_width + rng.uniform(-jitter, jitter) * cell_width
-                    center_y = layout_top + (card_index // columns + 0.5) * cell_height + rng.uniform(-jitter, jitter) * cell_height
+                    ys, xs = np.nonzero(rotated_mask)
+                    surface_width, surface_height = xs.max() - xs.min() + 1, ys.max() - ys.min() + 1
+                    if surface_width > cell_width or surface_height > cell_height:
+                        continue
+                    # Keep the visible surface inside its cell, including after local rotation.
+                    jitter_x = min(jitter * cell_width, (cell_width - surface_width) / 2)
+                    jitter_y = min(jitter * cell_height, (cell_height - surface_height) / 2)
+                    center_x = layout_left + (card_index % columns + 0.5) * cell_width + rng.uniform(-jitter_x, jitter_x)
+                    center_y = layout_top + (card_index // columns + 0.5) * cell_height + rng.uniform(-jitter_y, jitter_y)
                     x = int(np.clip(center_x - card_width / 2, 0, config.image_width - card_width))
                     y = int(np.clip(center_y - card_height / 2, 0, config.image_height - card_height))
                 mask_view = rotated_mask > 0
@@ -431,7 +459,8 @@ def generate_coco_dataset(config: DatasetConfig) -> Path:
 
             if not placed:
                 raise RuntimeError(
-                    f"Could not place {target_count} cards in image {image_id}. "
+                    f"Could not place {target_count} {layout.value} cards in image {image_id} "
+                    f"(scene width {layout_width}, gap {gap:.3f}). "
                     "Increase the image size, reduce card sizes/count, or reduce the rotation range."
                 )
 
@@ -448,6 +477,7 @@ def generate_coco_dataset(config: DatasetConfig) -> Path:
         image_info: dict[str, object] = {
             "id": image_id,
             "layout": layout.value,
+            "layout_orientation": layout_angle if layout != SceneLayout.SCATTERED else None,
             "width": config.image_width,
             "height": config.image_height,
             "file_name": f"images/{image_name}",
