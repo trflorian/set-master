@@ -6,6 +6,7 @@ class DetectorVariant(StrEnum):
     BOX = "box"
     ORIENTED = "oriented"
     CORNERS = "corners"
+    QUADRILATERAL = "quadrilateral"
 
 
 @dataclass(frozen=True)

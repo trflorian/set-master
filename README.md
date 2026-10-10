@@ -12,7 +12,7 @@ Use the notebooks for configuration, previews, and workflow documentation.
 | [Download backgrounds](notebooks/download_backgrounds.ipynb) | Download and review real tabletop backgrounds |
 | [Generate synthetic dataset](notebooks/generate_synthetic_dataset.ipynb) | Generate images, masks, and COCO annotations |
 | [Augmentation benchmark](notebooks/benchmark_augmentations.ipynb) | Tune lighting and camera effects with paired previews |
-| [Train card detector](notebooks/train_card_detector.ipynb) | Train box, oriented-box, or four-corner detectors |
+| [Train card detector](notebooks/train_card_detector.ipynb) | Train box, oriented-box, corner heatmap, or quadrilateral regression detectors |
 | [Evaluate card detector](notebooks/evaluate_card_detector.ipynb) | Evaluate synthetic and real data with prediction overlays |
 
 ## Setup

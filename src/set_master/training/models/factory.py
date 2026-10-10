@@ -7,6 +7,7 @@ from set_master.training.config import DetectorConfig, DetectorVariant
 from set_master.training.models.box import CardDetector, DEFAULT_WEIGHTS
 from set_master.training.models.corners import CornerCardDetector
 from set_master.training.models.oriented import OrientedCardDetector
+from set_master.training.models.quadrilateral import QuadrilateralCardDetector
 
 
 def detector_class(variant: DetectorVariant) -> type[CardDetector]:
@@ -14,6 +15,7 @@ def detector_class(variant: DetectorVariant) -> type[CardDetector]:
         DetectorVariant.BOX: CardDetector,
         DetectorVariant.ORIENTED: OrientedCardDetector,
         DetectorVariant.CORNERS: CornerCardDetector,
+        DetectorVariant.QUADRILATERAL: QuadrilateralCardDetector,
     }[variant]
 
 

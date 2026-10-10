@@ -66,7 +66,7 @@ class CocoCardDataset(Dataset[tuple[Tensor, DetectionTarget]]):
             "area": torch.tensor(areas, dtype=torch.float32),
             "iscrowd": torch.tensor(crowds, dtype=torch.int64),
         }
-        if self.variant == DetectorVariant.CORNERS and len(keypoints) != len(boxes):
+        if self.variant in (DetectorVariant.CORNERS, DetectorVariant.QUADRILATERAL) and len(keypoints) != len(boxes):
             raise ValueError(f"Missing corner targets in {path}; add geometry annotations first")
         if self.variant == DetectorVariant.ORIENTED and len(oriented_boxes) != len(boxes):
             raise ValueError(f"Missing oriented targets in {path}; add geometry annotations first")

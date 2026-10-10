@@ -38,7 +38,7 @@ class GeometryMetrics:
                 if overlaps[row, column] >= 0.5:
                     available.remove(column)
                     self.matched_ious.append(float(overlaps[row, column]))
-                    if self.variant == DetectorVariant.CORNERS:
+                    if self.variant in (DetectorVariant.CORNERS, DetectorVariant.QUADRILATERAL):
                         diagonal = np.linalg.norm(expected[column].max(axis=0) - expected[column].min(axis=0))
                         error = np.linalg.norm(predicted[row] - expected[column], axis=1).mean()
                         self.corner_errors.append(float(error / max(diagonal, 1)))
@@ -65,7 +65,7 @@ class GeometryMetrics:
             aps.append(float(np.mean(interpolated)) if ground_truth_count else -1.0)
         result = {"geometry_map": float(np.mean(aps)), "geometry_map_50": aps[0],
                   "geometry_map_75": aps[5], "matched_polygon_iou": float(np.mean(self.matched_ious)) if self.matched_ious else -1.0}
-        if self.variant == DetectorVariant.CORNERS:
+        if self.variant in (DetectorVariant.CORNERS, DetectorVariant.QUADRILATERAL):
             result["corner_error_normalized"] = float(np.mean(self.corner_errors)) if self.corner_errors else -1.0
         return result
 
