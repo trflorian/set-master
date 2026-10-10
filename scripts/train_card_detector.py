@@ -22,6 +22,7 @@ def main() -> None:
     parser.add_argument("--experiment-name", help="Defaults to detector type and timestamp")
     parser.add_argument("--val-data", type=Path, help="Separate validation dataset; otherwise use a seeded image split")
     parser.add_argument("--test-data", type=Path, default=REAL_TESTSET_DIR)
+    parser.add_argument("--no-augmentation", action="store_true")
     parser.add_argument("--early-stopping-patience", type=int, default=5)
     parser.add_argument("--early-stopping-min-delta", type=float, default=0.001)
     parser.add_argument("--score-threshold", type=float, default=0.75)
@@ -57,7 +58,7 @@ def main() -> None:
     pl.seed_everything(args.seed, workers=True)
     data = CardDataModule(
         args.train_data, args.val_data, args.batch_size, args.num_workers, args.val_fraction, args.seed,
-        variant=variant, test_root=args.test_data,
+        variant=variant, test_root=args.test_data, augment=not args.no_augmentation,
     )
     data.setup("fit")
     model = create_detector(

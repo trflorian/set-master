@@ -23,8 +23,8 @@ class DatasetConfig:
     image_count: int = 100
     image_width: int = 1280
     image_height: int = 720
-    cards_per_image: tuple[int, int] = (3, 7)
-    card_width: tuple[int, int] = (100, 170)
+    cards_per_image: tuple[int, int] = (5, 15)
+    card_width: tuple[int, int] = (80, 130)
     card_aspect_ratio: tuple[float, float] = (0.64, 0.69)
     rotation_degrees: tuple[float, float] = (-180.0, 180.0)
     skew_x_degrees: tuple[float, float] = (-15.0, 15.0)

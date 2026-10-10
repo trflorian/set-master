@@ -5,9 +5,11 @@ from pathlib import Path
 import cv2
 import lightning.pytorch as pl
 import torch
+import numpy as np
 from torch import Tensor
-from torch.utils.data import DataLoader, Dataset, Subset
+from torch.utils.data import DataLoader, Dataset, Subset, get_worker_info
 from set_master.training.config import DetectorVariant
+from set_master.training.augmentation import CardAugmentation
 
 
 DetectionTarget = dict[str, Tensor]
@@ -17,9 +19,12 @@ DetectionBatch = tuple[list[Tensor], list[DetectionTarget]]
 class CocoCardDataset(Dataset[tuple[Tensor, DetectionTarget]]):
     """Read whole-card boxes; RGB conversion and normalization happen separately."""
 
-    def __init__(self, root: Path, variant: DetectorVariant = DetectorVariant.BOX) -> None:
+    def __init__(self, root: Path, variant: DetectorVariant = DetectorVariant.BOX,
+                 augmentation: CardAugmentation | None = None) -> None:
         self.root = root
         self.variant = variant
+        self.augmentation = augmentation
+        self.augmentation_worker_seed: int | None = None
         coco = json.loads((root / "annotations.json").read_text())
         card_categories = {item["id"] for item in coco["categories"] if item["name"] == "card"}
         if not card_categories:
@@ -53,7 +58,6 @@ class CocoCardDataset(Dataset[tuple[Tensor, DetectionTarget]]):
             if "oriented_bbox" in annotation:
                 oriented_boxes.append(annotation["oriented_bbox"])
         rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-        tensor = torch.from_numpy(rgb).permute(2, 0, 1).float().div(255)
         target = {
             "boxes": torch.tensor(boxes, dtype=torch.float32).reshape(-1, 4),
             "labels": torch.ones(len(boxes), dtype=torch.int64),
@@ -69,6 +73,15 @@ class CocoCardDataset(Dataset[tuple[Tensor, DetectionTarget]]):
             target["keypoints"] = torch.tensor(keypoints, dtype=torch.float32).reshape(-1, 4, 3)
         if len(oriented_boxes) == len(boxes):
             target["oriented_boxes"] = torch.tensor(oriented_boxes, dtype=torch.float32).reshape(-1, 5)
+        if self.augmentation is not None:
+            worker = get_worker_info()
+            if worker is not None and self.augmentation_worker_seed != worker.seed:
+                self.augmentation.transform.set_random_seed(worker.seed)
+                self.augmentation_worker_seed = worker.seed
+            polygons = [np.asarray(annotation["segmentation"][0], dtype=np.float32).reshape(-1, 2)
+                        for annotation in self.annotations[info["id"]]]
+            rgb, target = self.augmentation(rgb, target, polygons)
+        tensor = torch.from_numpy(np.ascontiguousarray(rgb)).permute(2, 0, 1).float().div(255)
         return tensor, target
 
 
@@ -83,6 +96,7 @@ class CardDataModule(pl.LightningDataModule):
         num_workers: int = 4, val_fraction: float = 0.2, seed: int = 42,
         variant: DetectorVariant = DetectorVariant.BOX,
         test_root: Path | None = None,
+        augment: bool = True,
     ) -> None:
         super().__init__()
         self.train_root = train_root
@@ -93,14 +107,17 @@ class CardDataModule(pl.LightningDataModule):
         self.seed = seed
         self.variant = variant
         self.test_root = test_root
+        self.augment = augment
         self.test_dataset = CocoCardDataset(test_root, variant) if test_root is not None else None
 
     def setup(self, stage: str | None = None) -> None:
         dataset = CocoCardDataset(self.train_root, self.variant)
+        augmented_dataset = CocoCardDataset(self.train_root, self.variant,
+                                           CardAugmentation(self.seed) if self.augment else None)
         if self.val_root is not None:
             if self.val_root.resolve() == self.train_root.resolve():
                 raise ValueError("Training and validation roots must differ")
-            self.train_dataset = dataset
+            self.train_dataset = augmented_dataset
             self.val_dataset = CocoCardDataset(self.val_root, self.variant)
             train_indices = list(range(len(dataset)))
             val_indices = list(range(len(self.val_dataset)))
@@ -111,7 +128,7 @@ class CardDataModule(pl.LightningDataModule):
             indices = torch.randperm(len(dataset), generator=torch.Generator().manual_seed(self.seed)).tolist()
             val_count = min(len(dataset) - 1, max(1, round(len(dataset) * self.val_fraction)))
             val_indices, train_indices = indices[:val_count], indices[val_count:]
-            self.train_dataset = Subset(dataset, train_indices)
+            self.train_dataset = Subset(augmented_dataset, train_indices)
             self.val_dataset = Subset(dataset, val_indices)
             val_source = dataset
         if not len(self.train_dataset) or not len(self.val_dataset):

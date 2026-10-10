@@ -1,7 +1,10 @@
 import json
+from copy import deepcopy
 from pathlib import Path
 
 import cv2
+import numpy as np
+import torch
 import lightning.pytorch as pl
 from lightning.pytorch.loggers import TensorBoardLogger
 from torch import Tensor
@@ -26,6 +29,41 @@ class EpochEvaluation(pl.Callback):
         self.test_overlay_ids = test_overlay_ids
         self.score_threshold = score_threshold
         self.iou_threshold = iou_threshold
+
+    def on_fit_start(self, trainer: pl.Trainer, pl_module: CardDetector) -> None:
+        if not trainer.is_global_zero:
+            return
+        data = trainer.datamodule
+        directory = self.run_dir / "data_previews"
+        directory.mkdir(parents=True, exist_ok=True)
+        for name, source in (("training", data.train_dataset), ("validation", data.val_dataset),
+                             ("test", data.test_dataset)):
+            if source is None:
+                continue
+            # Preview sampling must not consume the training augmentation RNG.
+            dataset = deepcopy(source)
+            count = min(6, len(dataset))
+            grid = np.full((((count + 2) // 3) * 320, 3 * 480, 3), 235, dtype=np.uint8)
+            for slot, index in enumerate(np.linspace(0, len(dataset) - 1, count, dtype=int)):
+                image, target = dataset[int(index)]
+                empty = {"boxes": torch.empty((0, 4)), "scores": torch.empty(0),
+                         "keypoints": torch.empty((0, 4, 3))}
+                if "oriented_boxes" in target:
+                    empty["oriented_boxes"] = torch.empty((0, 5))
+                preview = prediction_overlay(image, target, empty, 0)
+                height, width = preview.shape[:2]
+                scale = min(480 / width, 290 / height)
+                preview = cv2.resize(preview, (round(width * scale), round(height * scale)))
+                x, y = slot % 3 * 480, slot // 3 * 320
+                grid[y + 30:y + 30 + preview.shape[0], x:x + preview.shape[1]] = preview
+                cv2.putText(grid, f"{name} / image {target['image_id'].item()}", (x + 8, y + 22),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 0, 0), 1)
+            if not cv2.imwrite(str(directory / f"{name}.jpg"), grid):
+                raise OSError(f"Could not write {name} preview")
+            self.image_logger.experiment.add_image(f"data/{name}", cv2.cvtColor(grid, cv2.COLOR_BGR2RGB),
+                                                   global_step=0, dataformats="HWC")
+        self.image_logger.experiment.flush()
+        pl_module.print(f"Data preview grids: {directory}")
 
     def on_validation_batch_end(
         self, trainer: pl.Trainer, pl_module: CardDetector,

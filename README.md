@@ -43,6 +43,13 @@ split IDs, CSV metrics, and best/last checkpoints. Geometry variants select the
 best checkpoint by geometry AP; the baseline uses box AP. Existing baseline
 checkpoints remain loadable. Set `resume_checkpoint` to resume a run.
 
+Training uses Albumentations perspective, flips, lighting/color changes,
+shadows, blur, noise, and compression. Set `augment = False` in the notebook
+or pass `--no-augmentation` in the CLI to disable them. Validation and test
+images are unaugmented. At training start, annotated sample grids are saved
+under `data_previews/` and logged as `data/training`, `data/validation`, and
+`data/test` images.
+
 Training logs losses, learning rate, validation AP, and real-data AP,
 precision/recall, and geometry metrics to CSV and TensorBoard. The notebook
 includes an embedded TensorBoard dashboard. A separate local dashboard can be
