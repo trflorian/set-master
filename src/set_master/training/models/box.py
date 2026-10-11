@@ -10,6 +10,7 @@ from set_master.training.backbone import FrozenDinoFPN
 from set_master.training.data import DetectionBatch
 from set_master.training.config import DetectorVariant
 from set_master.training.geometry_metrics import GeometryMetrics
+from set_master.training.segmentation_metrics import SemanticMetrics, update_mask_ap
 from set_master.paths import DINOV3_REPO_DIR, MODELS_DIR
 
 DEFAULT_WEIGHTS = MODELS_DIR / "dinov3_convnext_tiny_pretrain_lvd1689m-21b726bb.pth"
@@ -17,7 +18,7 @@ DEFAULT_REPO = DINOV3_REPO_DIR
 
 
 class CardDetector(pl.LightningModule):
-    """Frozen DINOv3 features with trainable FPN, proposals, and box prediction."""
+    """Frozen DINOv3 features with trainable task heads and validation metrics."""
     variant = DetectorVariant.BOX
 
     def __init__(
@@ -34,8 +35,13 @@ class CardDetector(pl.LightningModule):
         self.hparams.variant = self.variant.value
         backbone = FrozenDinoFPN(weights_path, repo_path, initialize_pretrained)
         self.detector = self.build_detector(backbone, min_size, max_size)
-        self.box_map = MeanAveragePrecision(box_format="xyxy", iou_type="bbox", compute_on_cpu=True)
-        self.geometry_metrics = GeometryMetrics(self.variant) if self.variant != DetectorVariant.BOX else None
+        self.box_map = (None if self.variant == DetectorVariant.SEMANTIC else
+                        MeanAveragePrecision(box_format="xyxy", iou_type="bbox", compute_on_cpu=True))
+        self.geometry_metrics = (GeometryMetrics(self.variant) if self.variant in
+                                 (DetectorVariant.ORIENTED, DetectorVariant.CORNERS, DetectorVariant.QUADRILATERAL) else None)
+        self.semantic_metrics = SemanticMetrics() if self.variant == DetectorVariant.SEMANTIC else None
+        self.mask_map = (MeanAveragePrecision(iou_type="segm")
+                         if self.variant == DetectorVariant.INSTANCE else None)
 
     def build_detector(self, backbone: FrozenDinoFPN, min_size: int, max_size: int) -> nn.Module:
         return FasterRCNN(
@@ -49,7 +55,7 @@ class CardDetector(pl.LightningModule):
         )
 
     def forward(self, images: list[Tensor]) -> list[dict[str, Tensor]]:
-        """Predict boxes in original image coordinates; call in evaluation mode."""
+        """Predict task outputs in original image coordinates; call in evaluation mode."""
         if self.training:
             raise RuntimeError("Call model.eval() before prediction")
         return self.detector(images)
@@ -66,7 +72,12 @@ class CardDetector(pl.LightningModule):
     def validation_step(self, batch: DetectionBatch, batch_idx: int) -> list[dict[str, Tensor]]:
         images, targets = batch
         predictions = self(images)
-        self.box_map.update(predictions, targets)
+        if self.box_map is not None:
+            self.box_map.update(predictions, targets)
+        if self.semantic_metrics is not None:
+            self.semantic_metrics.update(predictions, targets)
+        if self.mask_map is not None:
+            update_mask_ap(self.mask_map, predictions, targets)
         if self.geometry_metrics is not None:
             self.geometry_metrics.update(predictions, targets)
         return predictions
@@ -81,10 +92,16 @@ class CardDetector(pl.LightningModule):
         self._log_detection_metrics("test")
 
     def _log_detection_metrics(self, prefix: str) -> None:
-        metrics = self.box_map.compute()
-        for name in ("map", "map_50", "map_75", "mar_100"):
-            self.log(f"{prefix}/{name}", metrics[name], prog_bar=name in ("map", "map_50"), sync_dist=True)
-        self.box_map.reset()
+        for metric, label in ((self.box_map, ''), (self.mask_map, 'mask_')):
+            if metric is not None:
+                metrics = metric.compute()
+                for name in ("map", "map_50", "map_75", "mar_100"):
+                    self.log(f"{prefix}/{label}{name}", metrics[name], prog_bar=name == "map", sync_dist=True)
+                metric.reset()
+        if self.semantic_metrics is not None:
+            for name, value in self.semantic_metrics.compute().items():
+                self.log(f"{prefix}/{name}", value, prog_bar=name == "foreground_iou")
+            self.semantic_metrics.reset()
         if self.geometry_metrics is not None:
             for name, value in self.geometry_metrics.compute().items():
                 self.log(f"{prefix}/{name}", value, prog_bar=name == "geometry_map")

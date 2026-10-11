@@ -136,7 +136,8 @@ class CardAugmentation:
         points = [point for polygon in polygons for segment in polygon for point in segment.tolist()]
         if 'keypoints' in target:
             points.extend(target['keypoints'][..., :2].reshape(-1, 2).tolist())
-        transformed = self.transform(image=image, keypoints=points)
+        mask_args = {"masks": [mask.numpy() for mask in target['masks']]} if 'masks' in target else {}
+        transformed = self.transform(image=image, keypoints=points, **mask_args)
         image = transformed['image']
         coords = np.asarray(transformed['keypoints'], dtype=np.float32).reshape(-1, 2)
         height, width = image.shape[:2]
@@ -165,6 +166,9 @@ class CardAugmentation:
                   for name, value in target.items()}
         target['boxes'] = torch.tensor(np.asarray(boxes), dtype=torch.float32).reshape(-1, 4)
         target['area'] = torch.tensor(areas, dtype=torch.float32)
+        if 'masks' in target:
+            masks = np.asarray(transformed['masks'], dtype=np.uint8).reshape(-1, height, width)
+            target['masks'] = torch.from_numpy(np.ascontiguousarray(masks[kept]))
         if 'oriented_boxes' in target:
             target['oriented_boxes'] = torch.tensor(obbs, dtype=torch.float32).reshape(-1, 5)
         xy = np.empty((0, 4, 2), dtype=np.float32)

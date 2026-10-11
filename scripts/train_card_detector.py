@@ -92,7 +92,7 @@ def main() -> None:
     print(f"W&B dashboard: {tracker.experiment.url}")
     (run_dir / "split.json").write_text(json.dumps(data.split_manifest, indent=2) + "\n")
     (run_dir / "config.json").write_text(json.dumps({**vars(args), "augmentation_config": asdict(augmentation_config)}, default=str, indent=2) + "\n")
-    monitor = "val/map" if variant == DetectorVariant.BOX else "val/geometry_map"
+    monitor = f"val/{variant.selection_metric}"
     checkpoint = ModelCheckpoint(
         dirpath=run_dir / "checkpoints", monitor=monitor, mode="max",
         save_top_k=1, save_last=True, filename="epoch-{epoch:02d}", auto_insert_metric_name=False,

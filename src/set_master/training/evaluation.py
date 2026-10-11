@@ -1,7 +1,7 @@
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TypedDict
+from typing import TypedDict, NotRequired
 from time import perf_counter
 
 import cv2
@@ -16,17 +16,20 @@ from set_master.training.data import CocoCardDataset, collate_detection
 from set_master.training.model import CardDetector
 from set_master.training.config import DetectorVariant
 from set_master.training.geometry_metrics import GeometryMetrics
+from set_master.training.segmentation_metrics import SemanticMetrics, update_mask_ap
 from set_master.geometry import obb_corners, rectify_card
 
 
 class ImageResult(TypedDict):
     image_id: int
     file_name: str
-    ground_truth: int
-    predictions: int
-    true_positives: int
-    false_positives: int
-    false_negatives: int
+    ground_truth: NotRequired[int]
+    predictions: NotRequired[int]
+    true_positives: NotRequired[int]
+    false_positives: NotRequired[int]
+    false_negatives: NotRequired[int]
+    foreground_iou: NotRequired[float]
+    dice: NotRequired[float]
 
 
 @dataclass
@@ -60,6 +63,27 @@ def prediction_overlay(
     height, width = preview.shape[:2]
     scale = min(1.0, max_side / max(height, width))
     preview = cv2.resize(preview, (round(width * scale), round(height * scale)))
+    if "masks" in target:
+        for mask in target['masks'].cpu().numpy():
+            mask = cv2.resize(mask.astype(np.uint8), preview.shape[1::-1], interpolation=cv2.INTER_NEAREST)
+            contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            cv2.drawContours(preview, contours, -1, (0, 180, 0), 2)
+    if 'semantic_mask' in prediction:
+        masks = prediction['semantic_mask'].cpu().numpy()
+    elif 'masks' in prediction:
+        masks = prediction['masks'][prediction['scores'] >= score_threshold, 0].cpu().numpy()
+    else:
+        masks = []
+    for index, mask in enumerate(masks):
+        mask = cv2.resize((mask >= 0.5).astype(np.uint8), preview.shape[1::-1], interpolation=cv2.INTER_NEAREST)
+        color = (0, 0, 220) if 'semantic_mask' in prediction else tuple(
+            int(channel) for channel in cv2.cvtColor(np.uint8([[[(index * 37) % 180, 220, 255]]]), cv2.COLOR_HSV2BGR)[0, 0])
+        pixels = mask.astype(bool)
+        preview[pixels] = (0.65 * preview[pixels] + 0.35 * np.array(color)).astype(np.uint8)
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        cv2.drawContours(preview, contours, -1, color, 2)
+    if 'semantic_mask' in prediction:
+        return preview
     for box in target["boxes"].cpu():
         x1, y1, x2, y2 = (box * scale).round().int().tolist()
         cv2.rectangle(preview, (x1, y1), (x2 - 1, y2 - 1), (0, 180, 0), 2)
@@ -120,8 +144,13 @@ def evaluate_detector(
     loader = DataLoader(subset, batch_size=batch_size, num_workers=num_workers,
                         collate_fn=collate_detection, shuffle=False)
     output_dir.mkdir(parents=True, exist_ok=True)
-    metric = MeanAveragePrecision(box_format="xyxy", iou_type="bbox", compute_on_cpu=True)
-    geometry_metric = GeometryMetrics(model.variant) if model.variant != DetectorVariant.BOX else None
+    semantic = model.variant == DetectorVariant.SEMANTIC
+    metric = None if semantic else MeanAveragePrecision(box_format="xyxy", iou_type="bbox", compute_on_cpu=True)
+    pixel_metric = SemanticMetrics() if semantic else None
+    mask_metric = (MeanAveragePrecision(iou_type="segm")
+                   if model.variant == DetectorVariant.INSTANCE else None)
+    geometry_metric = (GeometryMetrics(model.variant) if model.variant in
+                       (DetectorVariant.ORIENTED, DetectorVariant.CORNERS, DetectorVariant.QUADRILATERAL) else None)
     info_by_id = {info["id"]: info for info in dataset.images}
     rows: list[ImageResult] = []
     detections = []
@@ -137,11 +166,33 @@ def evaluate_detector(
                 torch.cuda.synchronize(model.device)
             inference_seconds += perf_counter() - started
             # AP uses all detector outputs; the display threshold only affects counts and overlays.
-            metric.update(predictions, targets)
+            if metric is not None:
+                metric.update(predictions, targets)
+            if pixel_metric is not None:
+                pixel_metric.update(predictions, targets)
+            if mask_metric is not None:
+                update_mask_ap(mask_metric, predictions, targets)
             if geometry_metric is not None:
                 geometry_metric.update(predictions, targets)
             for image, target, prediction in zip(images, targets, predictions):
                 image_id = int(target["image_id"].item())
+                if semantic:
+                    per_image = SemanticMetrics()
+                    per_image.update([prediction], [target])
+                    values = per_image.compute()
+                    rows.append({'image_id': image_id, 'file_name': info_by_id[image_id]['file_name'],
+                                 'foreground_iou': float(values['foreground_iou']), 'dice': float(values['dice'])})
+                    mask_path = Path('masks') / f'{image_id:06d}.png'
+                    (output_dir / mask_path).parent.mkdir(parents=True, exist_ok=True)
+                    mask = (prediction['semantic_mask'][0].numpy() >= 0.5).astype(np.uint8) * 255
+                    if not cv2.imwrite(str(output_dir / mask_path), mask):
+                        raise OSError(f'Could not save {mask_path}')
+                    detections.append({'image_id': image_id, 'semantic_mask': str(mask_path)})
+                    if image_id in overlay_image_ids:
+                        preview = prediction_overlay(image, target, prediction, score_threshold)
+                        if not cv2.imwrite(str(output_dir / f'overlay_{image_id:06d}.jpg'), preview):
+                            raise OSError(f'Could not save overlay for {image_id}')
+                    continue
                 keep = prediction["scores"] >= score_threshold
                 boxes, scores = prediction["boxes"][keep], prediction["scores"][keep]
                 tp = matched_count(boxes, scores, target["boxes"], iou_threshold)
@@ -159,6 +210,13 @@ def evaluate_detector(
                         detection["oriented_bbox"] = prediction["oriented_boxes"][index].tolist()
                     if "keypoints" in prediction:
                         detection["keypoints"] = prediction["keypoints"][index].reshape(-1).tolist()
+                    if 'masks' in prediction:
+                        mask_path = Path('masks') / f'{image_id:06d}' / f'card_{index:03d}.png'
+                        (output_dir / mask_path).parent.mkdir(parents=True, exist_ok=True)
+                        mask = (prediction['masks'][index, 0].numpy() >= 0.5).astype(np.uint8) * 255
+                        if not cv2.imwrite(str(output_dir / mask_path), mask):
+                            raise OSError(f'Could not save {mask_path}')
+                        detection['mask'] = str(mask_path)
                     detections.append(detection)
                 if image_id in overlay_image_ids:
                     preview = prediction_overlay(image, target, prediction, score_threshold)
@@ -186,24 +244,33 @@ def evaluate_detector(
                 print(f"Evaluated {len(rows)}/{len(subset)} images", end="\r")
     if progress:
         print()
-    raw = metric.compute()
-    metrics = {name: float(raw[name].item()) for name in ("map", "map_50", "map_75", "mar_100")}
+    metrics: dict[str, float] = {}
+    for ap_metric, label in ((metric, ''), (mask_metric, 'mask_')):
+        if ap_metric is not None:
+            raw = ap_metric.compute()
+            metrics.update({label + name: float(raw[name].item())
+                            for name in ('map', 'map_50', 'map_75', 'mar_100')})
+    if pixel_metric is not None:
+        metrics.update({name: float(value) for name, value in pixel_metric.compute().items()})
     metrics["inference_seconds"] = inference_seconds
     metrics["images_per_second"] = len(rows) / inference_seconds if inference_seconds else 0.0
     if geometry_metric is not None:
         metrics.update(geometry_metric.compute())
-    tp = sum(row["true_positives"] for row in rows)
-    fp = sum(row["false_positives"] for row in rows)
-    fn = sum(row["false_negatives"] for row in rows)
-    metrics.update(precision=tp / (tp + fp) if tp + fp else 0.0,
-                   recall=tp / (tp + fn) if tp + fn else 0.0,
-                   f1=2 * tp / (2 * tp + fp + fn) if 2 * tp + fp + fn else 0.0)
+    tp = sum(row.get("true_positives", 0) for row in rows)
+    fp = sum(row.get("false_positives", 0) for row in rows)
+    fn = sum(row.get("false_negatives", 0) for row in rows)
+    if not semantic:
+        metrics.update(precision=tp / (tp + fp) if tp + fp else 0.0,
+                       recall=tp / (tp + fn) if tp + fn else 0.0,
+                       f1=2 * tp / (2 * tp + fp + fn) if 2 * tp + fp + fn else 0.0)
     report = {
         "dataset": str(dataset.root.resolve()), "image_ids": sorted(selected),
         "variant": model.variant.value,
         "score_threshold": score_threshold, "iou_threshold": iou_threshold,
         "metrics": metrics, "images": rows,
     }
+    if semantic or mask_metric is not None:
+        report["mask_threshold"] = 0.5
     (output_dir / "metrics.json").write_text(json.dumps(report, indent=2) + "\n")
     (output_dir / "predictions.json").write_text(json.dumps(detections, indent=2) + "\n")
     return EvaluationResult(metrics=metrics, images=rows)

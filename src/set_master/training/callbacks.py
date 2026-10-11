@@ -52,6 +52,11 @@ class EpochEvaluation(pl.Callback):
                          "keypoints": torch.empty((0, 4, 3))}
                 if "oriented_boxes" in target:
                     empty["oriented_boxes"] = torch.empty((0, 5))
+                if 'masks' in target:
+                    empty = ({'semantic_mask': torch.zeros((1, *image.shape[-2:]))}
+                             if pl_module.variant.value == 'semantic' else
+                             {'boxes': torch.empty((0, 4)), 'scores': torch.empty(0),
+                              'masks': torch.empty((0, 1, *image.shape[-2:]))})
                 preview = prediction_overlay(image, target, empty, 0)
                 height, width = preview.shape[:2]
                 scale = min(480 / width, 290 / height)
@@ -119,6 +124,7 @@ class EpochEvaluation(pl.Callback):
             logger.log_metrics({**logged, "epoch": trainer.current_epoch}, step=trainer.global_step)
             logger.save()
         summary = " | ".join(f"{name}: {metrics[name]:.3f}" for name in
-                             ("val/map", "val/geometry_map", "real/map", "real/precision", "real/recall")
+                             ("val/map", "val/geometry_map", "val/foreground_iou", "val/mask_map",
+                              "real/foreground_iou", "real/mask_map", "real/map", "real/precision", "real/recall")
                              if name in metrics)
         pl_module.print(f"Epoch {trainer.current_epoch + 1} | {summary} | {directory}")

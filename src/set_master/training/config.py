@@ -7,6 +7,13 @@ class DetectorVariant(StrEnum):
     ORIENTED = "oriented"
     CORNERS = "corners"
     QUADRILATERAL = "quadrilateral"
+    SEMANTIC = "semantic"
+    INSTANCE = "instance"
+
+    @property
+    def selection_metric(self) -> str:
+        return {self.BOX: "map", self.SEMANTIC: "foreground_iou",
+                self.INSTANCE: "mask_map"}.get(self, "geometry_map")
 
 
 @dataclass(frozen=True)

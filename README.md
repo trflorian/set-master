@@ -2,7 +2,7 @@
 
 Generate synthetic SET cards, train card detectors, and inspect their predictions
 on real photos. Detection uses a frozen DINOv3 ConvNeXt Tiny backbone with trainable
-heads for boxes, oriented boxes, corner heatmaps, or quadrilaterals.
+heads for boxes, oriented boxes, corner heatmaps, quadrilaterals, semantic masks, or instance masks.
 
 ## A look at the project
 
@@ -40,8 +40,15 @@ The notebooks cover the workflow from card design to evaluation:
 | [Download backgrounds](notebooks/download_backgrounds.ipynb) | Download and review tabletop backgrounds |
 | [Generate synthetic dataset](notebooks/generate_synthetic_dataset.ipynb) | Render scenes, masks, and COCO annotations |
 | [Augmentation benchmark](notebooks/benchmark_augmentations.ipynb) | Compare lighting and camera effects |
-| [Train card detector](notebooks/train_card_detector.ipynb) | Configure and train the four detector variants |
+| [Train card detector](notebooks/train_card_detector.ipynb) | Configure and train the detector variants |
 | [Evaluate card detector](notebooks/evaluate_card_detector.ipynb) | Inspect metrics, prediction overlays, and rectified crops |
+
+Semantic segmentation predicts one foreground mask for all cards. Instance
+segmentation predicts a separate mask for each card, including touching cards.
+Both use the same frozen DINOv3 backbone with compact 128-channel mask heads.
+Select `SEMANTIC` or `INSTANCE` in the training notebook, or use
+`--variant semantic` / `--variant instance` in the training script. Semantic
+checkpoints use foreground IoU; instance checkpoints use mask mAP.
 
 ## Data and outputs
 

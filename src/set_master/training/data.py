@@ -18,7 +18,7 @@ DetectionBatch = tuple[list[Tensor], list[DetectionTarget]]
 
 
 class CocoCardDataset(Dataset[tuple[Tensor, DetectionTarget]]):
-    """Read whole-card boxes; RGB conversion and normalization happen separately."""
+    """Read card boxes, geometry, and polygon masks for the selected task."""
 
     def __init__(self, root: Path, variant: DetectorVariant = DetectorVariant.BOX,
                  augmentation: CardAugmentation | None = None) -> None:
@@ -69,6 +69,15 @@ class CocoCardDataset(Dataset[tuple[Tensor, DetectionTarget]]):
             "area": torch.tensor(areas, dtype=torch.float32),
             "iscrowd": torch.tensor(crowds, dtype=torch.int64),
         }
+        if self.variant in (DetectorVariant.SEMANTIC, DetectorVariant.INSTANCE):
+            masks = np.zeros((len(boxes), height, width), dtype=np.uint8)
+            for mask, annotation in zip(masks, self.annotations[info["id"]]):
+                contours = [np.rint(np.asarray(segment).reshape(-1, 2)).astype(np.int32)
+                            for segment in annotation["segmentation"]]
+                if not contours:
+                    raise ValueError(f"Missing card segmentation in {path}")
+                cv2.fillPoly(mask, contours, 1)
+            target["masks"] = torch.from_numpy(masks)
         if self.variant in (DetectorVariant.CORNERS, DetectorVariant.QUADRILATERAL) and len(keypoints) != len(boxes):
             raise ValueError(f"Missing corner targets in {path}; add geometry annotations first")
         if self.variant == DetectorVariant.ORIENTED and len(oriented_boxes) != len(boxes):
