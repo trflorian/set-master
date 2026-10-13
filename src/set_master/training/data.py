@@ -69,7 +69,7 @@ class CocoCardDataset(Dataset[tuple[Tensor, DetectionTarget]]):
             "area": torch.tensor(areas, dtype=torch.float32),
             "iscrowd": torch.tensor(crowds, dtype=torch.int64),
         }
-        if self.variant in (DetectorVariant.SEMANTIC, DetectorVariant.INSTANCE):
+        if self.variant.is_semantic or self.variant == DetectorVariant.INSTANCE:
             masks = np.zeros((len(boxes), height, width), dtype=np.uint8)
             for mask, annotation in zip(masks, self.annotations[info["id"]]):
                 contours = [np.rint(np.asarray(segment).reshape(-1, 2)).astype(np.int32)

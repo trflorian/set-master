@@ -54,7 +54,7 @@ class EpochEvaluation(pl.Callback):
                     empty["oriented_boxes"] = torch.empty((0, 5))
                 if 'masks' in target:
                     empty = ({'semantic_mask': torch.zeros((1, *image.shape[-2:]))}
-                             if pl_module.variant.value == 'semantic' else
+                             if pl_module.variant.is_semantic else
                              {'boxes': torch.empty((0, 4)), 'scores': torch.empty(0),
                               'masks': torch.empty((0, 1, *image.shape[-2:]))})
                 preview = prediction_overlay(image, target, empty, 0)

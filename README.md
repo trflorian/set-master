@@ -46,9 +46,17 @@ The notebooks cover the workflow from card design to evaluation:
 Semantic segmentation predicts one foreground mask for all cards. Instance
 segmentation predicts a separate mask for each card, including touching cards.
 Both use the same frozen DINOv3 backbone with compact 128-channel mask heads.
-Select `SEMANTIC` or `INSTANCE` in the training notebook, or use
-`--variant semantic` / `--variant instance` in the training script. Semantic
+Select `SEMANTIC`, `SEMANTIC_REFINED`, or `INSTANCE` in the training notebook,
+or use `--variant semantic`, `--variant semantic_refined`, or
+`--variant instance` in the training script. Semantic
 checkpoints use foreground IoU; instance checkpoints use mask mAP.
+
+`SEMANTIC_REFINED` progressively corrects a coarse mask using finer FPN features
+and small RGB branches at half and full input resolution. Every stage learns
+from a target at its own resolution, with boundary-weighted BCE, Dice, and
+pyramid consistency losses. The DINO backbone stays frozen. Refinement runs
+within the configured image size limits; it uses one image scale per forward
+pass and requires more activation memory than the basic semantic head.
 
 ## Data and outputs
 

@@ -9,6 +9,7 @@ from set_master.training.models.corners import CornerCardDetector
 from set_master.training.models.oriented import OrientedCardDetector
 from set_master.training.models.quadrilateral import QuadrilateralCardDetector
 from set_master.training.models.segmentation import SemanticCardDetector, InstanceCardDetector
+from set_master.training.models.semantic_refined import RefinedSemanticCardDetector
 
 
 def detector_class(variant: DetectorVariant) -> type[CardDetector]:
@@ -18,6 +19,7 @@ def detector_class(variant: DetectorVariant) -> type[CardDetector]:
         DetectorVariant.CORNERS: CornerCardDetector,
         DetectorVariant.QUADRILATERAL: QuadrilateralCardDetector,
         DetectorVariant.SEMANTIC: SemanticCardDetector,
+        DetectorVariant.SEMANTIC_REFINED: RefinedSemanticCardDetector,
         DetectorVariant.INSTANCE: InstanceCardDetector,
     }[variant]
 

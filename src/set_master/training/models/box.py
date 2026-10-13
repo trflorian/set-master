@@ -35,11 +35,11 @@ class CardDetector(pl.LightningModule):
         self.hparams.variant = self.variant.value
         backbone = FrozenDinoFPN(weights_path, repo_path, initialize_pretrained)
         self.detector = self.build_detector(backbone, min_size, max_size)
-        self.box_map = (None if self.variant == DetectorVariant.SEMANTIC else
+        self.box_map = (None if self.variant.is_semantic else
                         MeanAveragePrecision(box_format="xyxy", iou_type="bbox", compute_on_cpu=True))
         self.geometry_metrics = (GeometryMetrics(self.variant) if self.variant in
                                  (DetectorVariant.ORIENTED, DetectorVariant.CORNERS, DetectorVariant.QUADRILATERAL) else None)
-        self.semantic_metrics = SemanticMetrics() if self.variant == DetectorVariant.SEMANTIC else None
+        self.semantic_metrics = SemanticMetrics() if self.variant.is_semantic else None
         self.mask_map = (MeanAveragePrecision(iou_type="segm")
                          if self.variant == DetectorVariant.INSTANCE else None)
 

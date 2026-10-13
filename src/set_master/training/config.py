@@ -8,12 +8,18 @@ class DetectorVariant(StrEnum):
     CORNERS = "corners"
     QUADRILATERAL = "quadrilateral"
     SEMANTIC = "semantic"
+    SEMANTIC_REFINED = "semantic_refined"
     INSTANCE = "instance"
 
     @property
+    def is_semantic(self) -> bool:
+        return self in (self.SEMANTIC, self.SEMANTIC_REFINED)
+
+    @property
     def selection_metric(self) -> str:
-        return {self.BOX: "map", self.SEMANTIC: "foreground_iou",
-                self.INSTANCE: "mask_map"}.get(self, "geometry_map")
+        if self.is_semantic:
+            return "foreground_iou"
+        return {self.BOX: "map", self.INSTANCE: "mask_map"}.get(self, "geometry_map")
 
 
 @dataclass(frozen=True)

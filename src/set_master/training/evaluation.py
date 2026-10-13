@@ -144,7 +144,7 @@ def evaluate_detector(
     loader = DataLoader(subset, batch_size=batch_size, num_workers=num_workers,
                         collate_fn=collate_detection, shuffle=False)
     output_dir.mkdir(parents=True, exist_ok=True)
-    semantic = model.variant == DetectorVariant.SEMANTIC
+    semantic = model.variant.is_semantic
     metric = None if semantic else MeanAveragePrecision(box_format="xyxy", iou_type="bbox", compute_on_cpu=True)
     pixel_metric = SemanticMetrics() if semantic else None
     mask_metric = (MeanAveragePrecision(iou_type="segm")

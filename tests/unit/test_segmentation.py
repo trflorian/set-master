@@ -39,7 +39,7 @@ def card_target(height: int, width: int) -> dict[str, Tensor]:
             'masks': masks, 'iscrowd': torch.zeros(1, dtype=torch.int64), 'image_id': torch.tensor(1)}
 
 
-@pytest.mark.parametrize('variant', [DetectorVariant.SEMANTIC, DetectorVariant.INSTANCE])
+@pytest.mark.parametrize('variant', [DetectorVariant.SEMANTIC, DetectorVariant.SEMANTIC_REFINED, DetectorVariant.INSTANCE])
 def test_segmentation_trains_and_restores_original_mask_sizes(monkeypatch: pytest.MonkeyPatch,
                                                              variant: DetectorVariant) -> None:
     monkeypatch.setattr('set_master.training.models.box.FrozenDinoFPN', TinyFPN)
@@ -62,7 +62,7 @@ def test_segmentation_trains_and_restores_original_mask_sizes(monkeypatch: pytes
         predictions = model(images)
         model.validation_step((images, targets), 0)
     for image, prediction in zip(images, predictions):
-        masks = prediction['semantic_mask'] if variant == DetectorVariant.SEMANTIC else prediction['masks']
+        masks = prediction['semantic_mask'] if variant.is_semantic else prediction['masks']
         assert masks.shape[-2:] == image.shape[-2:]
         assert torch.isfinite(masks).all()
         assert ((masks >= 0) & (masks <= 1)).all()
@@ -109,7 +109,7 @@ class PerfectInstance(PerfectSemantic):
         return predictions
 
 
-@pytest.mark.parametrize('variant', [DetectorVariant.SEMANTIC, DetectorVariant.INSTANCE])
+@pytest.mark.parametrize('variant', [DetectorVariant.SEMANTIC, DetectorVariant.SEMANTIC_REFINED, DetectorVariant.INSTANCE])
 def test_segmentation_evaluation_exports_masks_and_correct_metrics(tmp_path: Path, variant: DetectorVariant) -> None:
     cv2.imwrite(str(tmp_path / 'scene.png'), np.zeros((32, 48, 3), dtype=np.uint8))
     (tmp_path / 'annotations.json').write_text(json.dumps({
@@ -117,10 +117,11 @@ def test_segmentation_evaluation_exports_masks_and_correct_metrics(tmp_path: Pat
         'annotations': [{'id': 1, 'image_id': 1, 'category_id': 1, 'bbox': [4, 8, 16, 16],
                          'segmentation': [[4, 8, 19, 8, 19, 23, 4, 23]]}],
     }))
-    model = PerfectSemantic() if variant == DetectorVariant.SEMANTIC else PerfectInstance()
+    model = PerfectSemantic() if variant.is_semantic else PerfectInstance()
+    model.variant = variant
     result = evaluate_detector(model.eval(), CocoCardDataset(tmp_path, variant),
                                tmp_path / 'results', overlay_image_ids=(1,), progress=False)
-    if variant == DetectorVariant.SEMANTIC:
+    if variant.is_semantic:
         assert result.metrics['foreground_iou'] == 1
         assert result.metrics['dice'] == 1
         assert 'map' not in result.metrics and 'predictions' not in result.images[0]
@@ -131,3 +132,42 @@ def test_segmentation_evaluation_exports_masks_and_correct_metrics(tmp_path: Pat
         mask_path = 'masks/000001/card_000.png'
     assert cv2.imread(str(tmp_path / 'results' / mask_path)).shape[:2] == (32, 48)
     assert (tmp_path / 'results/overlay_000001.jpg').is_file()
+
+
+def test_pyramid_loss_excludes_padding_and_detaches_coarse_consistency() -> None:
+    from set_master.training.models.semantic_refined import pyramid_mask_losses
+
+    truth = torch.zeros(1, 1, 32, 32)
+    truth[:, :, :20, :19] = 1
+    valid = torch.zeros_like(truth)
+    valid[:, :, :20, :19] = 1
+    logits = [torch.randn(1, 1, 8, 8, requires_grad=True), torch.randn(1, 1, 32, 32, requires_grad=True)]
+    altered = []
+    for logit in logits:
+        coverage = F.interpolate(valid, size=logit.shape[-2:], mode='area')
+        altered.append(torch.where(coverage > 0, logit, logit + 100))
+    losses = pyramid_mask_losses(logits, truth, valid)
+    changed = pyramid_mask_losses(altered, truth + (1 - valid), valid)
+    for name in losses:
+        torch.testing.assert_close(losses[name], changed[name])
+    losses['loss_pyramid_consistency'].backward()
+    assert logits[0].grad is None
+    assert logits[1].grad is not None and logits[1].grad.abs().sum() > 0
+    assert not logits[1].grad[valid == 0].any()
+
+
+def test_refined_checkpoint_restores_same_predictions(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    from set_master.training.models.factory import load_detector
+
+    monkeypatch.setattr('set_master.training.models.box.FrozenDinoFPN', TinyFPN)
+    model = create_detector(DetectorConfig(variant=DetectorVariant.SEMANTIC_REFINED, min_size=32, max_size=64),
+                            initialize_pretrained=False).eval()
+    image = torch.rand(3, 37, 49)
+    checkpoint = tmp_path / 'refined.ckpt'
+    torch.save({'state_dict': model.state_dict(), 'hyper_parameters': dict(model.hparams),
+                'pytorch-lightning_version': pl.__version__}, checkpoint)
+    restored = load_detector(checkpoint)
+    assert restored.variant == DetectorVariant.SEMANTIC_REFINED
+    assert restored.variant.selection_metric == 'foreground_iou'
+    with torch.no_grad():
+        torch.testing.assert_close(model([image])[0]['semantic_mask'], restored([image])[0]['semantic_mask'])
