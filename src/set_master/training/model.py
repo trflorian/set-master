@@ -1,4 +1,4 @@
 from set_master.training.backbone import FrozenDinoFPN
-from set_master.training.models.box import CardDetector, DEFAULT_REPO, DEFAULT_WEIGHTS
+from set_master.training.models.box import DEFAULT_WEIGHTS, CardDetector
 
-__all__ = ["CardDetector", "FrozenDinoFPN", "DEFAULT_REPO", "DEFAULT_WEIGHTS"]
+__all__ = ["DEFAULT_WEIGHTS", "CardDetector", "FrozenDinoFPN"]

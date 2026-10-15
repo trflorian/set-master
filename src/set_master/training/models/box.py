@@ -6,15 +6,14 @@ from torchvision.models.detection import FasterRCNN
 from torchvision.models.detection.anchor_utils import AnchorGenerator
 from torchvision.ops import MultiScaleRoIAlign
 
+from set_master.paths import MODELS_DIR
 from set_master.training.backbone import FrozenDinoFPN
-from set_master.training.data import DetectionBatch
 from set_master.training.config import DetectorVariant
+from set_master.training.data import DetectionBatch
 from set_master.training.geometry_metrics import GeometryMetrics
 from set_master.training.segmentation_metrics import SemanticMetrics, update_mask_ap
-from set_master.paths import DINOV3_REPO_DIR, MODELS_DIR
 
 DEFAULT_WEIGHTS = MODELS_DIR / "dinov3_convnext_tiny_pretrain_lvd1689m-21b726bb.pth"
-DEFAULT_REPO = DINOV3_REPO_DIR
 
 
 class CardDetector(pl.LightningModule):
@@ -25,7 +24,6 @@ class CardDetector(pl.LightningModule):
     def __init__(
         self,
         weights_path: str = str(DEFAULT_WEIGHTS),
-        repo_path: str = str(DEFAULT_REPO),
         learning_rate: float = 1e-3,
         weight_decay: float = 1e-4,
         min_size: int = 640,
@@ -38,7 +36,7 @@ class CardDetector(pl.LightningModule):
             raise ValueError(f"Checkpoint variant {variant} does not match {self.variant}")
         self.save_hyperparameters()
         self.hparams.variant = self.variant.value
-        backbone = FrozenDinoFPN(weights_path, repo_path, initialize_pretrained)
+        backbone = FrozenDinoFPN(weights_path, initialize_pretrained)
         self.detector = self.build_detector(backbone, min_size, max_size)
         self.box_map = (
             None

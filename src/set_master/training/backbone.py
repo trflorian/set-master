@@ -1,9 +1,8 @@
 from collections import OrderedDict
-import importlib
 from pathlib import Path
-import sys
 
 import torch
+from dinov3.hub.backbones import dinov3_convnext_tiny
 from torch import Tensor, nn
 from torchvision.ops import FeaturePyramidNetwork
 
@@ -11,20 +10,11 @@ from torchvision.ops import FeaturePyramidNetwork
 class FrozenDinoFPN(nn.Module):
     out_channels = 256
 
-    def __init__(self, weights_path: str, repo_path: str, initialize_pretrained: bool = True) -> None:
+    def __init__(self, weights_path: str, initialize_pretrained: bool = True) -> None:
         super().__init__()
-        if not Path(repo_path, "hubconf.py").is_file():
-            raise FileNotFoundError(f"DINOv3 source checkout not found: {repo_path}")
         if initialize_pretrained and not Path(weights_path).is_file():
             raise FileNotFoundError(f"DINOv3 pretrained weights not found: {weights_path}")
-        # Import just the official backbone entry point: hubconf also imports optional
-        # segmentation/depth packages that this detector does not use.
-        sys.path.insert(0, repo_path)
-        try:
-            backbones = importlib.import_module("dinov3.hub.backbones")
-            self.encoder = backbones.dinov3_convnext_tiny(pretrained=False, patch_size=None)
-        finally:
-            sys.path.remove(repo_path)
+        self.encoder = dinov3_convnext_tiny(pretrained=False, patch_size=None)
         if initialize_pretrained:
             self.encoder.load_state_dict(torch.load(weights_path, map_location="cpu", weights_only=True), strict=True)
         self.encoder.requires_grad_(False)

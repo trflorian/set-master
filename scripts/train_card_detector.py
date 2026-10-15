@@ -1,7 +1,7 @@
 import argparse
 import json
-from datetime import datetime
 from dataclasses import asdict
+from datetime import datetime
 from pathlib import Path
 
 import lightning.pytorch as pl
@@ -9,14 +9,14 @@ import wandb
 from lightning.pytorch.callbacks import EarlyStopping, LearningRateMonitor, ModelCheckpoint
 from lightning.pytorch.loggers import CSVLogger
 
+from set_master.paths import AUGMENTATION_PRESET_PATH, REAL_TESTSET_DIR, RUNS_DIR
 from set_master.training.augmentation import AugmentationConfig
-from set_master.training.data import CardDataModule
-from set_master.training.model import DEFAULT_REPO, DEFAULT_WEIGHTS
-from set_master.training.config import DetectorConfig, DetectorVariant
-from set_master.training.models.factory import create_detector
-from set_master.paths import REAL_TESTSET_DIR, RUNS_DIR, AUGMENTATION_PRESET_PATH
 from set_master.training.callbacks import EpochEvaluation
+from set_master.training.config import DetectorConfig, DetectorVariant
+from set_master.training.data import CardDataModule
 from set_master.training.logging import create_wandb_logger
+from set_master.training.model import DEFAULT_WEIGHTS
+from set_master.training.models.factory import create_detector
 
 
 def main() -> None:
@@ -41,7 +41,6 @@ def main() -> None:
     parser.add_argument("--train-images-per-epoch", type=int, default=200)
     parser.add_argument("--val-images-per-epoch", type=int, default=20)
     parser.add_argument("--weights", type=Path, default=DEFAULT_WEIGHTS)
-    parser.add_argument("--dinov3-repo", type=Path, default=DEFAULT_REPO)
     parser.add_argument("--output-dir", type=Path, default=RUNS_DIR / "card_detector")
     parser.add_argument("--batch-size", type=int, default=2)
     parser.add_argument("--num-workers", type=int, default=4)
@@ -85,7 +84,6 @@ def main() -> None:
     model = create_detector(
         DetectorConfig(variant, args.learning_rate, args.weight_decay, args.min_size, args.max_size),
         weights_path=args.weights.expanduser().resolve(),
-        repo_path=args.dinov3_repo.expanduser().resolve(),
         initialize_pretrained=args.resume is None,
     )
     logger = CSVLogger(str(experiment_dir), name="")

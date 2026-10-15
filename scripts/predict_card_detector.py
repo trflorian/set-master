@@ -4,14 +4,13 @@ import math
 from pathlib import Path
 
 import cv2
-import torch
 import numpy as np
+import torch
 
-from set_master.training.model import DEFAULT_REPO
-from set_master.training.models.factory import load_detector
-from set_master.training.evaluation import prediction_overlay
 from set_master.geometry import obb_corners, rectify_card
 from set_master.paths import RUNS_DIR
+from set_master.training.evaluation import prediction_overlay
+from set_master.training.models.factory import load_detector
 
 
 def main() -> None:
@@ -21,14 +20,13 @@ def main() -> None:
     parser.add_argument("--output-dir", type=Path, default=RUNS_DIR / "card_predictions")
     parser.add_argument("--score-threshold", type=float, default=0.5)
     parser.add_argument("--device", default="cpu")
-    parser.add_argument("--dinov3-repo", type=Path, default=DEFAULT_REPO)
     args = parser.parse_args()
     if not 0 <= args.score_threshold <= 1:
         parser.error("score-threshold must be between 0 and 1")
     image = cv2.imread(str(args.image))
     if image is None:
         raise FileNotFoundError(f"Could not read {args.image}")
-    model = load_detector(args.checkpoint, args.dinov3_repo.expanduser().resolve()).to(args.device)
+    model = load_detector(args.checkpoint).to(args.device)
     rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
     tensor = torch.from_numpy(rgb).permute(2, 0, 1).float().div(255).to(args.device)
     with torch.inference_mode():

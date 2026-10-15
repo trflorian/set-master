@@ -2,13 +2,12 @@ from pathlib import Path
 
 import torch
 
-from set_master.paths import DINOV3_REPO_DIR
 from set_master.training.config import DetectorConfig, DetectorVariant
-from set_master.training.models.box import CardDetector, DEFAULT_WEIGHTS
+from set_master.training.models.box import DEFAULT_WEIGHTS, CardDetector
 from set_master.training.models.corners import CornerCardDetector
 from set_master.training.models.oriented import OrientedCardDetector
 from set_master.training.models.quadrilateral import QuadrilateralCardDetector
-from set_master.training.models.segmentation import SemanticCardDetector, InstanceCardDetector
+from set_master.training.models.segmentation import InstanceCardDetector, SemanticCardDetector
 from set_master.training.models.semantic_refined import RefinedSemanticCardDetector
 
 
@@ -27,12 +26,10 @@ def detector_class(variant: DetectorVariant) -> type[CardDetector]:
 def create_detector(
     config: DetectorConfig,
     weights_path: Path = DEFAULT_WEIGHTS,
-    repo_path: Path = DINOV3_REPO_DIR,
     initialize_pretrained: bool = True,
 ) -> CardDetector:
     return detector_class(config.variant)(
         weights_path=str(weights_path),
-        repo_path=str(repo_path),
         initialize_pretrained=initialize_pretrained,
         learning_rate=config.learning_rate,
         weight_decay=config.weight_decay,
@@ -41,7 +38,7 @@ def create_detector(
     )
 
 
-def load_detector(checkpoint_path: Path, repo_path: Path = DINOV3_REPO_DIR) -> CardDetector:
+def load_detector(checkpoint_path: Path) -> CardDetector:
     checkpoint = torch.load(checkpoint_path, map_location="cpu", weights_only=True)
     hyperparameters = checkpoint.get("hyper_parameters", {})
     variant = DetectorVariant(hyperparameters.get("variant", "box"))
@@ -53,7 +50,6 @@ def load_detector(checkpoint_path: Path, repo_path: Path = DINOV3_REPO_DIR) -> C
             checkpoint_path,
             map_location="cpu",
             weights_only=True,
-            repo_path=str(repo_path),
             initialize_pretrained=False,
             keypoint_channels=(512,) * 8,
         ).eval()
@@ -63,7 +59,6 @@ def load_detector(checkpoint_path: Path, repo_path: Path = DINOV3_REPO_DIR) -> C
             checkpoint_path,
             map_location="cpu",
             weights_only=True,
-            repo_path=str(repo_path),
             initialize_pretrained=False,
         )
         .eval()

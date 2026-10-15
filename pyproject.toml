@@ -13,6 +13,7 @@ dependencies = [
 
 [project.optional-dependencies]
 training = [
+    "dinov3",
     "albumentations>=2.0.8,<3",
     "opencv-python-headless>=4.11.0.86,<5",
     "lightning>=2.5",
@@ -28,14 +29,19 @@ requires = ["uv_build>=0.9.8,<0.10.0"]
 build-backend = "uv_build"
 
 [dependency-groups]
-dev = [
-    "pytest>=9.1.1",
-    "ruff>=0.17.1",
-]
+dev = ["pytest>=9.1.1", "ruff>=0.17.1"]
 
 [tool.uv.sources]
-torch = [{ index = "pytorch-cu126", marker = "sys_platform == 'linux' or sys_platform == 'win32'" }]
-torchvision = [{ index = "pytorch-cu126", marker = "sys_platform == 'linux' or sys_platform == 'win32'" }]
+dinov3 = { path = "src/dinov3", editable = true }
+torch = [
+    { index = "pytorch-cu126", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+]
+torchvision = [
+    { index = "pytorch-cu126", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+]
+
+[tool.basedpyright]
+extraPaths = ["src", "src/dinov3"]
 
 [[tool.uv.index]]
 name = "pytorch-cu126"

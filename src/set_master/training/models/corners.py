@@ -4,18 +4,18 @@ from torch.nn import functional as F
 from torchvision.models.detection import KeypointRCNN
 from torchvision.models.detection.anchor_utils import AnchorGenerator
 from torchvision.models.detection.keypoint_rcnn import KeypointRCNNHeads, KeypointRCNNPredictor
-from torchvision.ops import MultiScaleRoIAlign
 from torchvision.models.detection.roi_heads import (
     RoIHeads,
     fastrcnn_loss,
-    keypoints_to_heatmap,
     keypointrcnn_inference,
+    keypoints_to_heatmap,
 )
+from torchvision.ops import MultiScaleRoIAlign
 
 from set_master.training.backbone import FrozenDinoFPN
-from set_master.training.models.box import CardDetector, DEFAULT_REPO, DEFAULT_WEIGHTS
 from set_master.training.config import DetectorVariant
 from set_master.training.data import DetectionBatch
+from set_master.training.models.box import DEFAULT_WEIGHTS, CardDetector
 
 
 def cyclic_keypoint_loss(
@@ -121,7 +121,6 @@ class CornerCardDetector(CardDetector):
     def __init__(
         self,
         weights_path: str = str(DEFAULT_WEIGHTS),
-        repo_path: str = str(DEFAULT_REPO),
         learning_rate: float = 1e-3,
         weight_decay: float = 1e-4,
         min_size: int = 640,
@@ -135,7 +134,6 @@ class CornerCardDetector(CardDetector):
         self.keypoint_channels = keypoint_channels
         super().__init__(
             weights_path=weights_path,
-            repo_path=repo_path,
             learning_rate=learning_rate,
             weight_decay=weight_decay,
             min_size=min_size,
