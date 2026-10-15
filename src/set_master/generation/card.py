@@ -11,14 +11,13 @@ def draw_card_surface(
     size: tuple[int, int],
     corner_radius: int = 8,
 ) -> None:
-    """
-    Draw a card shape with rounded corners on the given image.
+    """Draw a white rounded card surface in place, centered at position.
 
     Args:
-        img (np.ndarray): The image on which to draw the card.
-        card_width (int): The width of the card.
-        card_height (int): The height of the card.
-        corner_radius (int): The radius of the rounded corners.
+        img: OpenCV image to modify in place.
+        position: Card center as (x, y) in image pixels.
+        size: Card dimensions as (width, height) in pixels.
+        corner_radius: Radius of the rounded corners in pixels.
     """
     card_width, card_height = size
 
@@ -82,8 +81,20 @@ def draw_card(
     corner_radius: int | None = None,
     feature_style: FeatureStyle = FeatureStyle(),
 ) -> None:
-    """
-    Draw a card with its features on the given image.
+    """Draw a card and its symbols in place on an OpenCV image.
+
+    Args:
+        img: OpenCV BGR image to modify in place.
+        card: Symbol shape, color, shading, and count to render.
+        position: Card center as (x, y); defaults to the image center.
+        size: Card dimensions as (width, height) in pixels.
+        feature_size: Symbol dimensions as (width, height) in pixels;
+            defaults to 64% of card width and 18% of card height.
+        symbol_spacing: Vertical distance between symbol centers in pixels;
+            defaults to 24% of card height.
+        corner_radius: Corner radius in pixels; defaults to 4.5% of the
+            shorter card dimension, rounded to at least one pixel.
+        feature_style: Shading pattern, stroke width, and squiggle geometry.
     """
 
     img_size = img.shape

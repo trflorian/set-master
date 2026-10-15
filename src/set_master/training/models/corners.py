@@ -48,7 +48,7 @@ def cyclic_keypoint_loss(
 
 
 def order_and_filter_corners(result: dict[str, Tensor]) -> dict[str, Tensor]:
-    """Canonicalize corner order and discard nonfinite or nonconvex detections."""
+    """Sort corners clockwise from channel zero; discard invalid or degenerate polygons."""
     points = result["keypoints"]
     xy = points[..., :2]
     centered = xy - xy.mean(dim=1, keepdim=True)

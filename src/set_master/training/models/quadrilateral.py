@@ -27,7 +27,7 @@ def quadrilateral_geometry_loss(offsets: Tensor, expected: Tensor, visible: Tens
 
 
 def portrait_axis_encoding(points: Tensor) -> Tensor:
-    """Encode the axis between short-edge midpoints without a 180-degree seam."""
+    """Encode the portrait axis of card-relative corners as (cos 2θ, sin 2θ)."""
     axis = (points[:, 2] + points[:, 3] - points[:, 0] - points[:, 1]) / 2
     x, y = axis.unbind(dim=1)
     # cos(2 theta), sin(2 theta): opposite directions share a target, sideways does not.
@@ -37,7 +37,7 @@ def portrait_axis_encoding(points: Tensor) -> Tensor:
 
 
 def orient_quadrilaterals(points: Tensor, orientation: Tensor) -> Tensor:
-    """Choose the short-edge pair while preserving the predicted polygon geometry."""
+    """Rotate the corner sequence to match the learned portrait axis, preserving geometry."""
     candidates = torch.stack((portrait_axis_encoding(points), portrait_axis_encoding(points.roll(-1, dims=1))), dim=1)
     shift = (candidates * orientation[:, None]).sum(dim=2).argmax(dim=1)
     indices = (torch.arange(4, device=points.device)[None] + shift[:, None]) % 4

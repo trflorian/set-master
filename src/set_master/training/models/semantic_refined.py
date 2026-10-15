@@ -11,7 +11,7 @@ from set_master.training.models.box import CardDetector
 
 
 class MaskRefinement(nn.Module):
-    """Predict a residual from spatial features and the preceding mask."""
+    """Add a learned residual to upsampled, detached coarse mask logits."""
 
     def __init__(self, channels: int) -> None:
         super().__init__()

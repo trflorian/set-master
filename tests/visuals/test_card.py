@@ -11,7 +11,7 @@ IMAGE_SIZE = (1440, 1100)
 
 
 def test_draw_card_variants_for_each_color(output_dir: Path) -> None:
-    """Render every shape and shading combination into 1440p review grids."""
+    """Render every shape and shading combination into 1100×1440 review grids."""
     cards_output_dir = output_dir / "cards"
     cards_output_dir.mkdir(parents=True, exist_ok=True)
     label_width = 136
