@@ -1,25 +1,38 @@
 # Set Master
 
+![Synthetic-to-real card detection with frozen DINOv3 features: rendered training cards and mask predictions on a real photo](docs/images/synthetic-to-real-banner.webp)
+
 Generate synthetic SET cards, train card detectors, and inspect their predictions
 on real photos. Detection uses a frozen DINOv3 ConvNeXt Tiny backbone with trainable
 heads for boxes, oriented boxes, corner heatmaps, quadrilaterals, semantic masks, or instance masks.
 
-## A look at the project
+## From synthetic cards to real detections
 
-| Synthetic training scenes | Real card annotations |
-| --- | --- |
-| ![Twelve synthetic cards in a dense two-row grid on a wood-grain tabletop viewed in perspective, with corner and orientation annotations](docs/images/synthetic-scene.jpg) | ![Reviewed real card annotations with purple lines showing each card's portrait axis](docs/images/real-card-geometry.jpg) |
-| A dense card layout on a wood-grain tabletop viewed in perspective, with exact geometry from rendering. | Reviewed corner labels preserve portrait orientation under perspective. |
+Train on procedurally generated cards, then evaluate on real photos. The frozen
+backbone supplies pretrained features; the feature pyramid and task heads learn
+card localization using only synthetic training data.
 
-The purple line joins the midpoints of the card's short sides. It shows the
-portrait axis, allowing 180° symmetry while distinguishing sideways crops.
-These overlays show dataset annotations; evaluation overlays compare green
-ground truth with red predictions.
+<p align="center">
+  <img src="docs/images/successful-detections.webp" width="760" alt="Actual predictions on the same real card: an axis-aligned box, a rotated box, four corners, and a semantic foreground mask">
+</p>
 
-| Card styles | Augmentation previews |
-| --- | --- |
-| ![Five SET symbol shapes in red solid, green outline, and purple striped styles](docs/images/card-styles.jpg) | ![Original and augmented card crops showing changes in lighting, perspective, and image quality](docs/images/augmentation-comparison.jpg) |
-| Adjustable shapes, colors, shading, symbol spacing, and rounded corners. | Paired crops reveal the effects of lighting, perspective, and camera augmentation. |
+*A successful example from each of four trained models on the same real card.
+Lime dashed outlines show ground truth; violet shows predictions. These are
+focused crops; neighboring detections are omitted in the box and corner panels.*
+
+## Build the data, get the labels
+
+Adjust symbol shapes, colors, shading, count, spacing, and card geometry before
+placing the cards on textured tabletops with perspective and lighting variation.
+
+<p align="center">
+  <img src="docs/images/procedural-card-generation.gif" width="640" alt="Animated procedural card generation showing changes to symbol size, symbol spacing, and stripe spacing">
+</p>
+
+Each rendered scene supplies its own geometry and pixel labels, so the same
+dataset supports multiple prediction targets without manual annotation.
+
+![A synthetic card scene alongside its generated bounding boxes, corners, and foreground mask](docs/images/synthetic-training-targets.webp)
 
 ## Get started
 
