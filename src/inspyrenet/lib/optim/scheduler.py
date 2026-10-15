@@ -7,7 +7,7 @@ class PolyLr(_LRScheduler):
         self.max_iteration = max_iteration
         self.minimum_lr = minimum_lr
         self.warmup_iteration = warmup_iteration
-        
+
         self.last_epoch = None
         self.base_lrs = []
 
@@ -22,8 +22,9 @@ class PolyLr(_LRScheduler):
     def get_lr(self):
         if self.last_epoch < self.warmup_iteration:
             alpha = self.last_epoch / self.warmup_iteration
-            lrs = [min(self.warmup_lr(base_lr, alpha), self.poly_lr(base_lr, self.last_epoch)) for base_lr in
-                    self.base_lrs]
+            lrs = [
+                min(self.warmup_lr(base_lr, alpha), self.poly_lr(base_lr, self.last_epoch)) for base_lr in self.base_lrs
+            ]
         else:
             lrs = [self.poly_lr(base_lr, self.last_epoch) for base_lr in self.base_lrs]
 

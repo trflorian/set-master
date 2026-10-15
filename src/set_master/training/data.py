@@ -20,8 +20,9 @@ DetectionBatch = tuple[list[Tensor], list[DetectionTarget]]
 class CocoCardDataset(Dataset[tuple[Tensor, DetectionTarget]]):
     """Read card boxes, geometry, and polygon masks for the selected task."""
 
-    def __init__(self, root: Path, variant: DetectorVariant = DetectorVariant.BOX,
-                 augmentation: CardAugmentation | None = None) -> None:
+    def __init__(
+        self, root: Path, variant: DetectorVariant = DetectorVariant.BOX, augmentation: CardAugmentation | None = None
+    ) -> None:
         self.root = root
         self.variant = variant
         self.augmentation = augmentation
@@ -55,9 +56,13 @@ class CocoCardDataset(Dataset[tuple[Tensor, DetectionTarget]]):
             areas.append(annotation.get("area", w * h))
             crowds.append(annotation.get("iscrowd", 0))
             if "keypoints" in annotation:
-                if (self.variant in (DetectorVariant.CORNERS, DetectorVariant.QUADRILATERAL)
-                        and annotation.get('corner_order') != 'card_relative'):
-                    raise ValueError(f'Missing card-relative corner order in {path}; migrate orientation annotations first')
+                if (
+                    self.variant in (DetectorVariant.CORNERS, DetectorVariant.QUADRILATERAL)
+                    and annotation.get("corner_order") != "card_relative"
+                ):
+                    raise ValueError(
+                        f"Missing card-relative corner order in {path}; migrate orientation annotations first"
+                    )
                 keypoints.append(annotation["keypoints"])
             if "oriented_bbox" in annotation:
                 oriented_boxes.append(annotation["oriented_bbox"])
@@ -72,8 +77,10 @@ class CocoCardDataset(Dataset[tuple[Tensor, DetectionTarget]]):
         if self.variant.is_semantic or self.variant == DetectorVariant.INSTANCE:
             masks = np.zeros((len(boxes), height, width), dtype=np.uint8)
             for mask, annotation in zip(masks, self.annotations[info["id"]]):
-                contours = [np.rint(np.asarray(segment).reshape(-1, 2)).astype(np.int32)
-                            for segment in annotation["segmentation"]]
+                contours = [
+                    np.rint(np.asarray(segment).reshape(-1, 2)).astype(np.int32)
+                    for segment in annotation["segmentation"]
+                ]
                 if not contours:
                     raise ValueError(f"Missing card segmentation in {path}")
                 cv2.fillPoly(mask, contours, 1)
@@ -91,9 +98,10 @@ class CocoCardDataset(Dataset[tuple[Tensor, DetectionTarget]]):
             if worker is not None and self.augmentation_worker_seed != worker.seed:
                 self.augmentation.transform.set_random_seed(worker.seed)
                 self.augmentation_worker_seed = worker.seed
-            polygons = [[np.asarray(segment, dtype=np.float32).reshape(-1, 2)
-                         for segment in annotation["segmentation"]]
-                        for annotation in self.annotations[info["id"]]]
+            polygons = [
+                [np.asarray(segment, dtype=np.float32).reshape(-1, 2) for segment in annotation["segmentation"]]
+                for annotation in self.annotations[info["id"]]
+            ]
             rgb, target = self.augmentation(rgb, target, polygons)
         tensor = torch.from_numpy(np.ascontiguousarray(rgb)).permute(2, 0, 1).float().div(255)
         return tensor, target
@@ -121,13 +129,18 @@ class EpochImageSampler(Sampler[int]):
 
     def __iter__(self) -> Iterator[int]:
         generator = torch.Generator().manual_seed(self.seed + self.epoch)
-        return iter(torch.randperm(self.dataset_size, generator=generator)[:self.image_count].tolist())
+        return iter(torch.randperm(self.dataset_size, generator=generator)[: self.image_count].tolist())
 
 
 class CardDataModule(pl.LightningDataModule):
     def __init__(
-        self, train_root: Path, val_root: Path | None = None, batch_size: int = 2,
-        num_workers: int = 4, val_fraction: float = 0.1, seed: int = 42,
+        self,
+        train_root: Path,
+        val_root: Path | None = None,
+        batch_size: int = 2,
+        num_workers: int = 4,
+        val_fraction: float = 0.1,
+        seed: int = 42,
         variant: DetectorVariant = DetectorVariant.BOX,
         test_root: Path | None = None,
         augment: bool = True,
@@ -156,8 +169,11 @@ class CardDataModule(pl.LightningDataModule):
 
     def setup(self, stage: str | None = None) -> None:
         dataset = CocoCardDataset(self.train_root, self.variant)
-        augmented_dataset = CocoCardDataset(self.train_root, self.variant,
-                                           CardAugmentation(self.seed, self.augmentation_config) if self.augment else None)
+        augmented_dataset = CocoCardDataset(
+            self.train_root,
+            self.variant,
+            CardAugmentation(self.seed, self.augmentation_config) if self.augment else None,
+        )
         if self.val_root is not None:
             if self.val_root.resolve() == self.train_root.resolve():
                 raise ValueError("Training and validation roots must differ")
@@ -179,9 +195,12 @@ class CardDataModule(pl.LightningDataModule):
             raise ValueError("Training and validation datasets must both contain images")
         val_count = min(len(self.val_dataset), self.val_images_per_epoch or len(self.val_dataset))
         # Keep the same validation subset across epochs so checkpoint comparisons stay consistent.
-        self.val_epoch_indices = sorted(torch.randperm(
-            len(self.val_dataset), generator=torch.Generator().manual_seed(self.seed + 1),
-        )[:val_count].tolist())
+        self.val_epoch_indices = sorted(
+            torch.randperm(
+                len(self.val_dataset),
+                generator=torch.Generator().manual_seed(self.seed + 1),
+            )[:val_count].tolist()
+        )
         self.split_manifest = {
             "seed": self.seed,
             "train_root": str(self.train_root.resolve()),
@@ -191,28 +210,35 @@ class CardDataModule(pl.LightningDataModule):
             "val_images_per_epoch": val_count,
             "val_epoch_image_ids": [val_source.images[val_indices[i]]["id"] for i in self.val_epoch_indices],
             "train_images_per_epoch": min(len(self.train_dataset), self.train_images_per_epoch)
-            if self.train_images_per_epoch is not None else len(self.train_dataset),
+            if self.train_images_per_epoch is not None
+            else len(self.train_dataset),
         }
 
     def train_dataloader(self) -> DataLoader:
-        sampler = EpochImageSampler(len(self.train_dataset),
-                                    self.train_images_per_epoch or len(self.train_dataset), self.seed)
+        sampler = EpochImageSampler(
+            len(self.train_dataset), self.train_images_per_epoch or len(self.train_dataset), self.seed
+        )
         return DataLoader(
-            self.train_dataset, batch_size=self.batch_size, sampler=sampler,
-            num_workers=self.num_workers, collate_fn=collate_detection,
+            self.train_dataset,
+            batch_size=self.batch_size,
+            sampler=sampler,
+            num_workers=self.num_workers,
+            collate_fn=collate_detection,
             persistent_workers=self.num_workers > 0,
             generator=torch.Generator().manual_seed(self.seed),
         )
 
     def val_dataloader(self) -> DataLoader:
         return DataLoader(
-            self.val_dataset, batch_size=self.batch_size, sampler=self.val_epoch_indices,
-            num_workers=self.num_workers, collate_fn=collate_detection,
+            self.val_dataset,
+            batch_size=self.batch_size,
+            sampler=self.val_epoch_indices,
+            num_workers=self.num_workers,
+            collate_fn=collate_detection,
             persistent_workers=self.num_workers > 0,
         )
 
     def test_dataloader(self) -> DataLoader:
         if self.test_dataset is None:
             raise ValueError("Set test_root to evaluate a test dataset")
-        return DataLoader(self.test_dataset, batch_size=1, num_workers=self.num_workers,
-                          collate_fn=collate_detection)
+        return DataLoader(self.test_dataset, batch_size=1, num_workers=self.num_workers, collate_fn=collate_detection)

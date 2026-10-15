@@ -39,8 +39,9 @@ def polygon_corners(points: NDArray[np.float32]) -> NDArray[np.float32]:
         unit = direction / length
         projection = (points - start) @ unit
         distance = np.abs((points[:, 0] - start[0]) * unit[1] - (points[:, 1] - start[1]) * unit[0])
-        selected = points[(projection > length * 0.15) & (projection < length * 0.85)
-                          & (distance < max(2.0, length * 0.04))]
+        selected = points[
+            (projection > length * 0.15) & (projection < length * 0.85) & (distance < max(2.0, length * 0.04))
+        ]
         coverage = np.ptp((selected - start) @ unit) if len(selected) else 0
         if len(selected) >= 2 and coverage > length * 0.5:
             vx, vy, x, y = cv2.fitLine(selected, cv2.DIST_HUBER, 0, 0.01, 0.01).reshape(4)
@@ -88,8 +89,11 @@ def polygon_iou(first: NDArray[np.float32], second: NDArray[np.float32]) -> floa
 
 
 def rectify_card(
-    image: NDArray[np.uint8], corners: NDArray[np.float32], size: tuple[int, int] = (256, 384),
-    *, card_relative: bool = False,
+    image: NDArray[np.uint8],
+    corners: NDArray[np.float32],
+    size: tuple[int, int] = (256, 384),
+    *,
+    card_relative: bool = False,
 ) -> NDArray[np.uint8]:
     source = np.asarray(corners, dtype=np.float32).reshape(4, 2) if card_relative else order_corners(corners)
     if not cv2.isContourConvex(source) or abs(cv2.contourArea(source)) < 1:
@@ -104,8 +108,10 @@ def rectify_card(
 
 
 def geometry_annotation(
-    corners: NDArray[np.float32], polygon: NDArray[np.float32],
-    *, card_relative: bool = False,
+    corners: NDArray[np.float32],
+    polygon: NDArray[np.float32],
+    *,
+    card_relative: bool = False,
 ) -> dict[str, list[float] | int | str]:
     corners = np.asarray(corners, dtype=np.float32).reshape(4, 2) if card_relative else order_corners(corners)
     return {

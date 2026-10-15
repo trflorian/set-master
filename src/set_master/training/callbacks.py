@@ -16,11 +16,14 @@ from set_master.training.models.box import CardDetector
 
 class EpochEvaluation(pl.Callback):
     def __init__(
-        self, run_dir: Path, image_logger: WandbLogger,
+        self,
+        run_dir: Path,
+        image_logger: WandbLogger,
         test_dataset: CocoCardDataset | None,
         validation_overlay_ids: list[int] | None = None,
         test_overlay_ids: list[int] | None = None,
-        score_threshold: float = 0.75, iou_threshold: float = 0.5,
+        score_threshold: float = 0.75,
+        iou_threshold: float = 0.5,
     ) -> None:
         self.run_dir = run_dir
         self.image_logger = image_logger
@@ -38,8 +41,11 @@ class EpochEvaluation(pl.Callback):
             raise TypeError("Data previews require CardDataModule")
         directory = self.run_dir / "data_previews"
         directory.mkdir(parents=True, exist_ok=True)
-        for name, source in (("training", data.train_dataset), ("validation", data.val_dataset),
-                             ("test", data.test_dataset)):
+        for name, source in (
+            ("training", data.train_dataset),
+            ("validation", data.val_dataset),
+            ("test", data.test_dataset),
+        ):
             if source is None:
                 continue
             # Preview sampling must not consume the training augmentation RNG.
@@ -48,33 +54,47 @@ class EpochEvaluation(pl.Callback):
             grid = np.full((((count + 2) // 3) * 320, 3 * 480, 3), 235, dtype=np.uint8)
             for slot, index in enumerate(np.linspace(0, len(dataset) - 1, count, dtype=int)):
                 image, target = dataset[int(index)]
-                empty = {"boxes": torch.empty((0, 4)), "scores": torch.empty(0),
-                         "keypoints": torch.empty((0, 4, 3))}
+                empty = {"boxes": torch.empty((0, 4)), "scores": torch.empty(0), "keypoints": torch.empty((0, 4, 3))}
                 if "oriented_boxes" in target:
                     empty["oriented_boxes"] = torch.empty((0, 5))
-                if 'masks' in target:
-                    empty = ({'semantic_mask': torch.zeros((1, *image.shape[-2:]))}
-                             if pl_module.variant.is_semantic else
-                             {'boxes': torch.empty((0, 4)), 'scores': torch.empty(0),
-                              'masks': torch.empty((0, 1, *image.shape[-2:]))})
+                if "masks" in target:
+                    empty = (
+                        {"semantic_mask": torch.zeros((1, *image.shape[-2:]))}
+                        if pl_module.variant.is_semantic
+                        else {
+                            "boxes": torch.empty((0, 4)),
+                            "scores": torch.empty(0),
+                            "masks": torch.empty((0, 1, *image.shape[-2:])),
+                        }
+                    )
                 preview = prediction_overlay(image, target, empty, 0)
                 height, width = preview.shape[:2]
                 scale = min(480 / width, 290 / height)
                 preview = cv2.resize(preview, (round(width * scale), round(height * scale)))
                 x, y = slot % 3 * 480, slot // 3 * 320
-                grid[y + 30:y + 30 + preview.shape[0], x:x + preview.shape[1]] = preview
-                cv2.putText(grid, f"{name} / image {target['image_id'].item()}", (x + 8, y + 22),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 0, 0), 1)
+                grid[y + 30 : y + 30 + preview.shape[0], x : x + preview.shape[1]] = preview
+                cv2.putText(
+                    grid,
+                    f"{name} / image {target['image_id'].item()}",
+                    (x + 8, y + 22),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.55,
+                    (0, 0, 0),
+                    1,
+                )
             if not cv2.imwrite(str(directory / f"{name}.jpg"), grid):
                 raise OSError(f"Could not write {name} preview")
-            self.image_logger.log_image(key=f"data/{name}", images=[cv2.cvtColor(grid, cv2.COLOR_BGR2RGB)],
-                                        step=0)
+            self.image_logger.log_image(key=f"data/{name}", images=[cv2.cvtColor(grid, cv2.COLOR_BGR2RGB)], step=0)
         pl_module.print(f"Data preview grids: {directory}")
 
     def on_validation_batch_end(
-        self, trainer: pl.Trainer, pl_module: CardDetector,
-        outputs: list[dict[str, Tensor]], batch: DetectionBatch,
-        batch_idx: int, dataloader_idx: int = 0,
+        self,
+        trainer: pl.Trainer,
+        pl_module: CardDetector,
+        outputs: list[dict[str, Tensor]],
+        batch: DetectionBatch,
+        batch_idx: int,
+        dataloader_idx: int = 0,
     ) -> None:
         if trainer.sanity_checking or not trainer.is_global_zero:
             return
@@ -89,7 +109,8 @@ class EpochEvaluation(pl.Callback):
             if not cv2.imwrite(str(directory / f"overlay_{image_id:06d}.jpg"), preview):
                 raise OSError(f"Could not write validation overlay in {directory}")
             self.image_logger.log_image(
-                key=f"validation/image_{image_id:06d}", images=[cv2.cvtColor(preview, cv2.COLOR_BGR2RGB)],
+                key=f"validation/image_{image_id:06d}",
+                images=[cv2.cvtColor(preview, cv2.COLOR_BGR2RGB)],
                 step=trainer.global_step,
             )
 
@@ -98,15 +119,25 @@ class EpochEvaluation(pl.Callback):
             return
         directory = self.run_dir / "epoch_evaluations" / f"epoch_{trainer.current_epoch + 1:04d}"
         directory.mkdir(parents=True, exist_ok=True)
-        metrics = {name: float(value.item()) for name, value in trainer.callback_metrics.items()
-                   if name.startswith("val/")}
+        metrics = {
+            name: float(value.item()) for name, value in trainer.callback_metrics.items() if name.startswith("val/")
+        }
         if self.test_dataset is not None:
-            overlay_ids = (self.test_overlay_ids if self.test_overlay_ids is not None else
-                           [info["id"] for info in self.test_dataset.images])
+            overlay_ids = (
+                self.test_overlay_ids
+                if self.test_overlay_ids is not None
+                else [info["id"] for info in self.test_dataset.images]
+            )
             result = evaluate_detector(
-                pl_module, self.test_dataset, directory / "real",
-                overlay_image_ids=tuple(overlay_ids), batch_size=1, num_workers=0,
-                score_threshold=self.score_threshold, iou_threshold=self.iou_threshold, progress=False,
+                pl_module,
+                self.test_dataset,
+                directory / "real",
+                overlay_image_ids=tuple(overlay_ids),
+                batch_size=1,
+                num_workers=0,
+                score_threshold=self.score_threshold,
+                iou_threshold=self.iou_threshold,
+                progress=False,
             )
             metrics.update({f"real/{name}": value for name, value in result.metrics.items()})
             for image_id in overlay_ids:
@@ -114,7 +145,8 @@ class EpochEvaluation(pl.Callback):
                 if preview is None:
                     raise FileNotFoundError(f"Missing real overlay for image {image_id}")
                 self.image_logger.log_image(
-                    key=f"real/image_{image_id:06d}", images=[cv2.cvtColor(preview, cv2.COLOR_BGR2RGB)],
+                    key=f"real/image_{image_id:06d}",
+                    images=[cv2.cvtColor(preview, cv2.COLOR_BGR2RGB)],
                     step=trainer.global_step,
                 )
         record = {"epoch": trainer.current_epoch + 1, "global_step": trainer.global_step, "metrics": metrics}
@@ -123,8 +155,19 @@ class EpochEvaluation(pl.Callback):
         for logger in trainer.loggers:
             logger.log_metrics({**logged, "epoch": trainer.current_epoch}, step=trainer.global_step)
             logger.save()
-        summary = " | ".join(f"{name}: {metrics[name]:.3f}" for name in
-                             ("val/map", "val/geometry_map", "val/foreground_iou", "val/mask_map",
-                              "real/foreground_iou", "real/mask_map", "real/map", "real/precision", "real/recall")
-                             if name in metrics)
+        summary = " | ".join(
+            f"{name}: {metrics[name]:.3f}"
+            for name in (
+                "val/map",
+                "val/geometry_map",
+                "val/foreground_iou",
+                "val/mask_map",
+                "real/foreground_iou",
+                "real/mask_map",
+                "real/map",
+                "real/precision",
+                "real/recall",
+            )
+            if name in metrics
+        )
         pl_module.print(f"Epoch {trainer.current_epoch + 1} | {summary} | {directory}")

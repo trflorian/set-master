@@ -10,8 +10,14 @@ from set_master.annotation_visualization import draw_annotation_geometry
 
 
 PALETTE = [
-    (40, 80, 255), (50, 210, 70), (255, 110, 35), (230, 50, 210),
-    (30, 220, 220), (210, 190, 35), (170, 70, 255), (70, 220, 150),
+    (40, 80, 255),
+    (50, 210, 70),
+    (255, 110, 35),
+    (230, 50, 210),
+    (30, 220, 220),
+    (210, 190, 35),
+    (170, 70, 255),
+    (70, 220, 150),
 ]
 
 
@@ -19,9 +25,7 @@ def test_generate_default_image_and_debug_annotations(output_dir: Path) -> None:
     """Generate one default scene and compare its mask with COCO annotations."""
     dataset_dir = output_dir / "dataset_example"
     shutil.rmtree(dataset_dir, ignore_errors=True)
-    run_dir = generate_coco_dataset(
-        DatasetConfig(image_count=1, output_root=output_dir, run_name=dataset_dir.name)
-    )
+    run_dir = generate_coco_dataset(DatasetConfig(image_count=1, output_root=output_dir, run_name=dataset_dir.name))
     coco = json.loads((run_dir / "annotations.json").read_text(encoding="utf-8"))
     image_info = coco["images"][0]
     image = cv2.imread(str(run_dir / image_info["file_name"]))
@@ -32,11 +36,7 @@ def test_generate_default_image_and_debug_annotations(output_dir: Path) -> None:
     assert set(np.unique(mask).tolist()).issubset({0, 255})
     assert 255 in np.unique(mask)
 
-    annotations = [
-        annotation
-        for annotation in coco["annotations"]
-        if annotation["image_id"] == image_info["id"]
-    ]
+    annotations = [annotation for annotation in coco["annotations"] if annotation["image_id"] == image_info["id"]]
     overlay = image.copy()
     debug = image.copy()
     polygon_union = np.zeros_like(mask)

@@ -1,4 +1,4 @@
-#from .data.custom_transforms import *
+# from .data.custom_transforms import *
 
 import os
 import sys
@@ -14,11 +14,13 @@ from .data.custom_transforms import *
 
 def mask_image(opencv_image):
     # Load config
-    opt = ed(yaml.load(open('configs/Plus_Ultra_LR.yaml'), yaml.FullLoader))
+    opt = ed(yaml.load(open("configs/Plus_Ultra_LR.yaml"), yaml.FullLoader))
 
     model = eval(opt.Model.name)(**opt.Model)
-    model.load_state_dict(torch.load(os.path.join(
-        opt.Test.Checkpoint.checkpoint_dir, 'latest.pth'), map_location=torch.device('cpu')), strict=True)
+    model.load_state_dict(
+        torch.load(os.path.join(opt.Test.Checkpoint.checkpoint_dir, "latest.pth"), map_location=torch.device("cpu")),
+        strict=True,
+    )
 
     model.eval()
 
@@ -26,12 +28,12 @@ def mask_image(opencv_image):
 
     print("Model setup")
 
-    save_dir = 'results'
+    save_dir = "results"
 
     if save_dir is not None:
         os.makedirs(save_dir, exist_ok=True)
 
-    #sample_list = eval('ImageLoader')('images/000004.jpg', opt.Test.Dataset.transforms)
+    # sample_list = eval('ImageLoader')('images/000004.jpg', opt.Test.Dataset.transforms)
 
     custom_transforms = get_transform(opt.Test.Dataset.transforms)
 
@@ -40,24 +42,24 @@ def mask_image(opencv_image):
     start_time = time.time()
 
     image = cv2.cvtColor(opencv_image, cv2.COLOR_BGR2RGB)
-    image = Image.fromarray(image).convert('RGB')
+    image = Image.fromarray(image).convert("RGB")
 
     print("Image loaded")
 
     shape = image.size[::-1]
-    sample = {'image': image, 'name': 'my_img', 'shape': shape, 'original': image}
+    sample = {"image": image, "name": "my_img", "shape": shape, "original": image}
     sample = custom_transforms(sample)
 
     print("Custom transform applied")
 
-    sample['image'] = sample['image'].unsqueeze(0)
-    if 'image_resized' in sample.keys():
-        sample['image_resized'] = sample['image_resized'].unsqueeze(0)
+    sample["image"] = sample["image"].unsqueeze(0)
+    if "image_resized" in sample.keys():
+        sample["image_resized"] = sample["image_resized"].unsqueeze(0)
 
     print("unsqueezed")
-    #sample_list = eval('ImageLoader')(source, )
+    # sample_list = eval('ImageLoader')(source, )
 
-    #sample = custom_transforms(image)
+    # sample = custom_transforms(image)
 
     sample = to_cuda(sample)
     print("to cuda")
@@ -67,7 +69,7 @@ def mask_image(opencv_image):
 
     print("Forwarded")
 
-    pred = to_numpy(out['pred'], sample['shape'])
+    pred = to_numpy(out["pred"], sample["shape"])
 
     img = (np.stack([pred] * 3, axis=-1) * 255).astype(np.uint8)
 
@@ -84,6 +86,6 @@ def mask_image(opencv_image):
 
     end_time = time.time()
 
-    print(f"Inference took {end_time-start_time:.2f}s")
+    print(f"Inference took {end_time - start_time:.2f}s")
 
     return mask

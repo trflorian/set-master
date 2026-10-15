@@ -55,8 +55,11 @@ def matched_count(boxes: Tensor, scores: Tensor, targets: Tensor, iou_threshold:
 
 
 def prediction_overlay(
-    image: Tensor, target: dict[str, Tensor], prediction: dict[str, Tensor],
-    score_threshold: float, max_side: int = 1440,
+    image: Tensor,
+    target: dict[str, Tensor],
+    prediction: dict[str, Tensor],
+    score_threshold: float,
+    max_side: int = 1440,
 ) -> cv2.typing.MatLike:
     rgb = image.cpu().mul(255).byte().permute(1, 2, 0).numpy()
     preview = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
@@ -64,25 +67,31 @@ def prediction_overlay(
     scale = min(1.0, max_side / max(height, width))
     preview = cv2.resize(preview, (round(width * scale), round(height * scale)))
     if "masks" in target:
-        for mask in target['masks'].cpu().numpy():
+        for mask in target["masks"].cpu().numpy():
             mask = cv2.resize(mask.astype(np.uint8), preview.shape[1::-1], interpolation=cv2.INTER_NEAREST)
             contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
             cv2.drawContours(preview, contours, -1, (0, 180, 0), 2)
-    if 'semantic_mask' in prediction:
-        masks = prediction['semantic_mask'].cpu().numpy()
-    elif 'masks' in prediction:
-        masks = prediction['masks'][prediction['scores'] >= score_threshold, 0].cpu().numpy()
+    if "semantic_mask" in prediction:
+        masks = prediction["semantic_mask"].cpu().numpy()
+    elif "masks" in prediction:
+        masks = prediction["masks"][prediction["scores"] >= score_threshold, 0].cpu().numpy()
     else:
         masks = []
     for index, mask in enumerate(masks):
         mask = cv2.resize((mask >= 0.5).astype(np.uint8), preview.shape[1::-1], interpolation=cv2.INTER_NEAREST)
-        color = (0, 0, 220) if 'semantic_mask' in prediction else tuple(
-            int(channel) for channel in cv2.cvtColor(np.uint8([[[(index * 37) % 180, 220, 255]]]), cv2.COLOR_HSV2BGR)[0, 0])
+        color = (
+            (0, 0, 220)
+            if "semantic_mask" in prediction
+            else tuple(
+                int(channel)
+                for channel in cv2.cvtColor(np.uint8([[[(index * 37) % 180, 220, 255]]]), cv2.COLOR_HSV2BGR)[0, 0]
+            )
+        )
         pixels = mask.astype(bool)
         preview[pixels] = (0.65 * preview[pixels] + 0.35 * np.array(color)).astype(np.uint8)
         contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         cv2.drawContours(preview, contours, -1, color, 2)
-    if 'semantic_mask' in prediction:
+    if "semantic_mask" in prediction:
         return preview
     for box in target["boxes"].cpu():
         x1, y1, x2, y2 = (box * scale).round().int().tolist()
@@ -93,8 +102,9 @@ def prediction_overlay(
     elif "keypoints" in prediction and "keypoints" in target:
         for points in target["keypoints"][..., :2].cpu().numpy():
             cv2.polylines(preview, [np.rint(points * scale).astype(np.int32)], True, (0, 180, 0), 2)
-            axis = np.rint(np.array([(points[0] + points[1]) / 2,
-                                    (points[2] + points[3]) / 2]) * scale).astype(np.int32)
+            axis = np.rint(np.array([(points[0] + points[1]) / 2, (points[2] + points[3]) / 2]) * scale).astype(
+                np.int32
+            )
             cv2.line(preview, tuple(axis[0]), tuple(axis[1]), (0, 180, 0), 4, cv2.LINE_AA)
     for index, (box, score) in enumerate(zip(prediction["boxes"].cpu(), prediction["scores"].cpu())):
         if score < score_threshold:
@@ -109,23 +119,36 @@ def prediction_overlay(
         if points is not None:
             display_points = np.rint(points * scale).astype(np.int32)
             cv2.polylines(preview, [display_points], True, (0, 0, 220), 2)
-            if 'keypoints' in prediction:
-                axis = np.rint(np.array([(points[0] + points[1]) / 2,
-                                        (points[2] + points[3]) / 2]) * scale).astype(np.int32)
+            if "keypoints" in prediction:
+                axis = np.rint(np.array([(points[0] + points[1]) / 2, (points[2] + points[3]) / 2]) * scale).astype(
+                    np.int32
+                )
                 cv2.line(preview, tuple(axis[0]), tuple(axis[1]), (0, 0, 220), 2, cv2.LINE_AA)
             for corner_index, (cx, cy) in enumerate(display_points):
                 cv2.circle(preview, (int(cx), int(cy)), 4, (0, 0, 220), -1)
-                cv2.putText(preview, str(corner_index + 1), (int(cx) + 4, int(cy)), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 0, 220), 1)
-        cv2.putText(preview, f"{score:.2f}", (x1, max(16, y1 - 5)),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 220), 1)
+                cv2.putText(
+                    preview,
+                    str(corner_index + 1),
+                    (int(cx) + 4, int(cy)),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.4,
+                    (0, 0, 220),
+                    1,
+                )
+        cv2.putText(preview, f"{score:.2f}", (x1, max(16, y1 - 5)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 220), 1)
     return preview
 
 
 def evaluate_detector(
-    model: CardDetector, dataset: CocoCardDataset, output_dir: Path,
-    image_ids: list[int] | None = None, overlay_image_ids: tuple[int, ...] = (),
-    batch_size: int = 1, num_workers: int = 0,
-    score_threshold: float = 0.5, iou_threshold: float = 0.5,
+    model: CardDetector,
+    dataset: CocoCardDataset,
+    output_dir: Path,
+    image_ids: list[int] | None = None,
+    overlay_image_ids: tuple[int, ...] = (),
+    batch_size: int = 1,
+    num_workers: int = 0,
+    score_threshold: float = 0.5,
+    iou_threshold: float = 0.5,
     progress: bool = True,
 ) -> EvaluationResult:
     if model.training:
@@ -141,16 +164,19 @@ def evaluate_detector(
     if set(overlay_image_ids) - selected:
         raise ValueError("Overlay image IDs must belong to the evaluation selection")
     subset = Subset(dataset, [i for i, info in enumerate(dataset.images) if info["id"] in selected])
-    loader = DataLoader(subset, batch_size=batch_size, num_workers=num_workers,
-                        collate_fn=collate_detection, shuffle=False)
+    loader = DataLoader(
+        subset, batch_size=batch_size, num_workers=num_workers, collate_fn=collate_detection, shuffle=False
+    )
     output_dir.mkdir(parents=True, exist_ok=True)
     semantic = model.variant.is_semantic
     metric = None if semantic else MeanAveragePrecision(box_format="xyxy", iou_type="bbox", compute_on_cpu=True)
     pixel_metric = SemanticMetrics() if semantic else None
-    mask_metric = (MeanAveragePrecision(iou_type="segm")
-                   if model.variant == DetectorVariant.INSTANCE else None)
-    geometry_metric = (GeometryMetrics(model.variant) if model.variant in
-                       (DetectorVariant.ORIENTED, DetectorVariant.CORNERS, DetectorVariant.QUADRILATERAL) else None)
+    mask_metric = MeanAveragePrecision(iou_type="segm") if model.variant == DetectorVariant.INSTANCE else None
+    geometry_metric = (
+        GeometryMetrics(model.variant)
+        if model.variant in (DetectorVariant.ORIENTED, DetectorVariant.CORNERS, DetectorVariant.QUADRILATERAL)
+        else None
+    )
     info_by_id = {info["id"]: info for info in dataset.images}
     rows: list[ImageResult] = []
     detections = []
@@ -180,43 +206,58 @@ def evaluate_detector(
                     per_image = SemanticMetrics()
                     per_image.update([prediction], [target])
                     values = per_image.compute()
-                    rows.append({'image_id': image_id, 'file_name': info_by_id[image_id]['file_name'],
-                                 'foreground_iou': float(values['foreground_iou']), 'dice': float(values['dice'])})
-                    mask_path = Path('masks') / f'{image_id:06d}.png'
+                    rows.append(
+                        {
+                            "image_id": image_id,
+                            "file_name": info_by_id[image_id]["file_name"],
+                            "foreground_iou": float(values["foreground_iou"]),
+                            "dice": float(values["dice"]),
+                        }
+                    )
+                    mask_path = Path("masks") / f"{image_id:06d}.png"
                     (output_dir / mask_path).parent.mkdir(parents=True, exist_ok=True)
-                    mask = (prediction['semantic_mask'][0].numpy() >= 0.5).astype(np.uint8) * 255
+                    mask = (prediction["semantic_mask"][0].numpy() >= 0.5).astype(np.uint8) * 255
                     if not cv2.imwrite(str(output_dir / mask_path), mask):
-                        raise OSError(f'Could not save {mask_path}')
-                    detections.append({'image_id': image_id, 'semantic_mask': str(mask_path)})
+                        raise OSError(f"Could not save {mask_path}")
+                    detections.append({"image_id": image_id, "semantic_mask": str(mask_path)})
                     if image_id in overlay_image_ids:
                         preview = prediction_overlay(image, target, prediction, score_threshold)
-                        if not cv2.imwrite(str(output_dir / f'overlay_{image_id:06d}.jpg'), preview):
-                            raise OSError(f'Could not save overlay for {image_id}')
+                        if not cv2.imwrite(str(output_dir / f"overlay_{image_id:06d}.jpg"), preview):
+                            raise OSError(f"Could not save overlay for {image_id}")
                     continue
                 keep = prediction["scores"] >= score_threshold
                 boxes, scores = prediction["boxes"][keep], prediction["scores"][keep]
                 tp = matched_count(boxes, scores, target["boxes"], iou_threshold)
-                rows.append({
-                    "image_id": image_id, "file_name": info_by_id[image_id]["file_name"],
-                    "ground_truth": len(target["boxes"]), "predictions": len(boxes),
-                    "true_positives": tp, "false_positives": len(boxes) - tp,
-                    "false_negatives": len(target["boxes"]) - tp,
-                })
+                rows.append(
+                    {
+                        "image_id": image_id,
+                        "file_name": info_by_id[image_id]["file_name"],
+                        "ground_truth": len(target["boxes"]),
+                        "predictions": len(boxes),
+                        "true_positives": tp,
+                        "false_positives": len(boxes) - tp,
+                        "false_negatives": len(target["boxes"]) - tp,
+                    }
+                )
                 for index, (box, score) in enumerate(zip(prediction["boxes"].tolist(), prediction["scores"].tolist())):
                     x1, y1, x2, y2 = box
-                    detection = {"image_id": image_id, "category_id": 1,
-                                 "bbox": [x1, y1, x2 - x1, y2 - y1], "score": score}
+                    detection = {
+                        "image_id": image_id,
+                        "category_id": 1,
+                        "bbox": [x1, y1, x2 - x1, y2 - y1],
+                        "score": score,
+                    }
                     if "oriented_boxes" in prediction:
                         detection["oriented_bbox"] = prediction["oriented_boxes"][index].tolist()
                     if "keypoints" in prediction:
                         detection["keypoints"] = prediction["keypoints"][index].reshape(-1).tolist()
-                    if 'masks' in prediction:
-                        mask_path = Path('masks') / f'{image_id:06d}' / f'card_{index:03d}.png'
+                    if "masks" in prediction:
+                        mask_path = Path("masks") / f"{image_id:06d}" / f"card_{index:03d}.png"
                         (output_dir / mask_path).parent.mkdir(parents=True, exist_ok=True)
-                        mask = (prediction['masks'][index, 0].numpy() >= 0.5).astype(np.uint8) * 255
+                        mask = (prediction["masks"][index, 0].numpy() >= 0.5).astype(np.uint8) * 255
                         if not cv2.imwrite(str(output_dir / mask_path), mask):
-                            raise OSError(f'Could not save {mask_path}')
-                        detection['mask'] = str(mask_path)
+                            raise OSError(f"Could not save {mask_path}")
+                        detection["mask"] = str(mask_path)
                     detections.append(detection)
                 if image_id in overlay_image_ids:
                     preview = prediction_overlay(image, target, prediction, score_threshold)
@@ -237,19 +278,20 @@ def evaluate_detector(
                         if not cv2.isContourConvex(np.float32(points)) or abs(cv2.contourArea(np.float32(points))) < 1:
                             continue
                         crop_dir.mkdir(parents=True, exist_ok=True)
-                        if not cv2.imwrite(str(crop_dir / f"card_{index:03d}.png"),
-                                           rectify_card(source, points, card_relative='keypoints' in prediction)):
+                        if not cv2.imwrite(
+                            str(crop_dir / f"card_{index:03d}.png"),
+                            rectify_card(source, points, card_relative="keypoints" in prediction),
+                        ):
                             raise OSError(f"Could not save crop in {crop_dir}")
             if progress:
                 print(f"Evaluated {len(rows)}/{len(subset)} images", end="\r")
     if progress:
         print()
     metrics: dict[str, float] = {}
-    for ap_metric, label in ((metric, ''), (mask_metric, 'mask_')):
+    for ap_metric, label in ((metric, ""), (mask_metric, "mask_")):
         if ap_metric is not None:
             raw = ap_metric.compute()
-            metrics.update({label + name: float(raw[name].item())
-                            for name in ('map', 'map_50', 'map_75', 'mar_100')})
+            metrics.update({label + name: float(raw[name].item()) for name in ("map", "map_50", "map_75", "mar_100")})
     if pixel_metric is not None:
         metrics.update({name: float(value) for name, value in pixel_metric.compute().items()})
     metrics["inference_seconds"] = inference_seconds
@@ -260,14 +302,19 @@ def evaluate_detector(
     fp = sum(row.get("false_positives", 0) for row in rows)
     fn = sum(row.get("false_negatives", 0) for row in rows)
     if not semantic:
-        metrics.update(precision=tp / (tp + fp) if tp + fp else 0.0,
-                       recall=tp / (tp + fn) if tp + fn else 0.0,
-                       f1=2 * tp / (2 * tp + fp + fn) if 2 * tp + fp + fn else 0.0)
+        metrics.update(
+            precision=tp / (tp + fp) if tp + fp else 0.0,
+            recall=tp / (tp + fn) if tp + fn else 0.0,
+            f1=2 * tp / (2 * tp + fp + fn) if 2 * tp + fp + fn else 0.0,
+        )
     report = {
-        "dataset": str(dataset.root.resolve()), "image_ids": sorted(selected),
+        "dataset": str(dataset.root.resolve()),
+        "image_ids": sorted(selected),
         "variant": model.variant.value,
-        "score_threshold": score_threshold, "iou_threshold": iou_threshold,
-        "metrics": metrics, "images": rows,
+        "score_threshold": score_threshold,
+        "iou_threshold": iou_threshold,
+        "metrics": metrics,
+        "images": rows,
     }
     if semantic or mask_metric is not None:
         report["mask_threshold"] = 0.5

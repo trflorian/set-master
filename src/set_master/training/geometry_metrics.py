@@ -17,8 +17,12 @@ class GeometryMetrics:
     def update(self, predictions: list[dict[str, Tensor]], targets: list[dict[str, Tensor]]) -> None:
         for prediction, target in zip(predictions, targets):
             if self.variant == DetectorVariant.ORIENTED:
-                predicted = np.float32([obb_corners(box) for box in prediction["oriented_boxes"].detach().cpu().tolist()]).reshape(-1, 4, 2)
-                expected = np.float32([obb_corners(box) for box in target["oriented_boxes"].detach().cpu().tolist()]).reshape(-1, 4, 2)
+                predicted = np.float32(
+                    [obb_corners(box) for box in prediction["oriented_boxes"].detach().cpu().tolist()]
+                ).reshape(-1, 4, 2)
+                expected = np.float32(
+                    [obb_corners(box) for box in target["oriented_boxes"].detach().cpu().tolist()]
+                ).reshape(-1, 4, 2)
             else:
                 predicted = prediction["keypoints"][..., :2].detach().cpu().numpy()
                 expected = target["keypoints"][..., :2].detach().cpu().numpy()
@@ -40,8 +44,10 @@ class GeometryMetrics:
                     self.matched_ious.append(float(overlaps[row, column]))
                     if self.variant in (DetectorVariant.CORNERS, DetectorVariant.QUADRILATERAL):
                         diagonal = np.linalg.norm(expected[column].max(axis=0) - expected[column].min(axis=0))
-                        error = min(np.linalg.norm(predicted[row] - np.roll(expected[column], shift, axis=0), axis=1).mean()
-                                    for shift in (0, 2))
+                        error = min(
+                            np.linalg.norm(predicted[row] - np.roll(expected[column], shift, axis=0), axis=1).mean()
+                            for shift in (0, 2)
+                        )
                         self.corner_errors.append(float(error / max(diagonal, 1)))
 
     def compute(self) -> dict[str, float]:
@@ -61,11 +67,17 @@ class GeometryMetrics:
             true_positive = np.cumsum([matched for _, matched in detections])
             recall = true_positive / max(ground_truth_count, 1)
             precision = true_positive / np.arange(1, len(detections) + 1)
-            interpolated = [float(precision[recall >= level].max()) if np.any(recall >= level) else 0.0
-                            for level in np.linspace(0, 1, 101)]
+            interpolated = [
+                float(precision[recall >= level].max()) if np.any(recall >= level) else 0.0
+                for level in np.linspace(0, 1, 101)
+            ]
             aps.append(float(np.mean(interpolated)) if ground_truth_count else -1.0)
-        result = {"geometry_map": float(np.mean(aps)), "geometry_map_50": aps[0],
-                  "geometry_map_75": aps[5], "matched_polygon_iou": float(np.mean(self.matched_ious)) if self.matched_ious else -1.0}
+        result = {
+            "geometry_map": float(np.mean(aps)),
+            "geometry_map_50": aps[0],
+            "geometry_map_75": aps[5],
+            "matched_polygon_iou": float(np.mean(self.matched_ious)) if self.matched_ious else -1.0,
+        }
         if self.variant in (DetectorVariant.CORNERS, DetectorVariant.QUADRILATERAL):
             result["corner_error_normalized"] = float(np.mean(self.corner_errors)) if self.corner_errors else -1.0
         return result

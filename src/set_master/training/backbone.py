@@ -40,5 +40,3 @@ class FrozenDinoFPN(nn.Module):
         with torch.no_grad():
             features = self.encoder.get_intermediate_layers(images, n=4, reshape=True, norm=True)
         return self.fpn(OrderedDict((str(i), feature) for i, feature in enumerate(features)))
-
-

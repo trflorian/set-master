@@ -9,6 +9,8 @@ import numpy as np
 from kornia.morphology import dilation, erosion
 from torch.nn.parameter import Parameter
 from typing import Optional
+
+
 class ImagePyramid:
     def __init__(self, ksize=7, sigma=1, channels=1):
         self.ksize = ksize
@@ -19,15 +21,15 @@ class ImagePyramid:
         k = np.outer(k, k)
         k = torch.tensor(k).float()
         self.kernel = k.repeat(channels, 1, 1, 1)
-        
+
     def to(self, device):
         self.kernel = self.kernel.to(device)
         return self
-        
+
     def cuda(self, idx=None):
         if idx is None:
             idx = torch.cuda.current_device()
-            
+
         self.to(device="cuda:{}".format(idx))
         return self
 
@@ -35,12 +37,12 @@ class ImagePyramid:
         z = torch.zeros_like(x)
         x = torch.cat([x, z, z, z], dim=1)
         x = F.pixel_shuffle(x, 2)
-        x = F.pad(x, (self.ksize // 2, ) * 4, mode='reflect')
+        x = F.pad(x, (self.ksize // 2,) * 4, mode="reflect")
         x = F.conv2d(x, self.kernel * 4, groups=self.channels)
         return x
 
     def reduce(self, x):
-        x = F.pad(x, (self.ksize // 2, ) * 4, mode='reflect')
+        x = F.pad(x, (self.ksize // 2,) * 4, mode="reflect")
         x = F.conv2d(x, self.kernel, groups=self.channels)
         x = x[:, :, ::2, ::2]
         return x
@@ -58,49 +60,63 @@ class ImagePyramid:
     def reconstruct(self, x, laplacian_x):
         expanded_x = self.expand(x)
         if laplacian_x.shape != expanded_x:
-            laplacian_x = F.interpolate(laplacian_x, expanded_x.shape[-2:], mode='bilinear', align_corners=True)
+            laplacian_x = F.interpolate(laplacian_x, expanded_x.shape[-2:], mode="bilinear", align_corners=True)
         return expanded_x + laplacian_x
+
 
 class Transition:
     def __init__(self, k=3):
         self.kernel = torch.tensor(cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k, k))).float()
-        
+
     def to(self, device):
         self.kernel = self.kernel.to(device)
         return self
-        
+
     def cuda(self, idx=None):
         if idx is None:
             idx = torch.cuda.current_device()
-            
+
         self.to(device="cuda:{}".format(idx))
         return self
-        
+
     def __call__(self, x):
         x = torch.sigmoid(x)
         dx = dilation(x, self.kernel)
         ex = erosion(x, self.kernel)
-        
-        return ((dx - ex) > .5).float()
+
+        return ((dx - ex) > 0.5).float()
+
 
 class Conv2d(nn.Module):
-    def __init__(self, in_channels, out_channels, kernel_size, stride=1, dilation=1, groups=1, padding='same', bias=False, bn=True, relu=False):
+    def __init__(
+        self,
+        in_channels,
+        out_channels,
+        kernel_size,
+        stride=1,
+        dilation=1,
+        groups=1,
+        padding="same",
+        bias=False,
+        bn=True,
+        relu=False,
+    ):
         super(Conv2d, self).__init__()
-        if '__iter__' not in dir(kernel_size):
+        if "__iter__" not in dir(kernel_size):
             kernel_size = (kernel_size, kernel_size)
-        if '__iter__' not in dir(stride):
+        if "__iter__" not in dir(stride):
             stride = (stride, stride)
-        if '__iter__' not in dir(dilation):
+        if "__iter__" not in dir(dilation):
             dilation = (dilation, dilation)
 
-        if padding == 'same':
+        if padding == "same":
             width_pad_size = kernel_size[0] + (kernel_size[0] - 1) * (dilation[0] - 1)
             height_pad_size = kernel_size[1] + (kernel_size[1] - 1) * (dilation[1] - 1)
-        elif padding == 'valid':
+        elif padding == "valid":
             width_pad_size = 0
             height_pad_size = 0
         else:
-            if '__iter__' in dir(padding):
+            if "__iter__" in dir(padding):
                 width_pad_size = padding[0] * 2
                 height_pad_size = padding[1] * 2
             else:
@@ -117,7 +133,7 @@ class Conv2d(nn.Module):
             self.bn = nn.BatchNorm2d(out_channels)
         else:
             self.bn = None
-        
+
         if relu is True:
             self.relu = nn.ReLU(inplace=True)
         else:
@@ -136,7 +152,7 @@ class Conv2d(nn.Module):
 
 
 class SelfAttention(nn.Module):
-    def __init__(self, in_channels, mode='hw', stage_size=None):
+    def __init__(self, in_channels, mode="hw", stage_size=None):
         super(SelfAttention, self).__init__()
 
         self.mode = mode
@@ -147,16 +163,16 @@ class SelfAttention(nn.Module):
 
         self.gamma = Parameter(torch.zeros(1))
         self.softmax = nn.Softmax(dim=-1)
-        
+
         self.stage_size = stage_size
 
     def forward(self, x):
         batch_size, channel, height, width = x.size()
 
         axis = 1
-        if 'h' in self.mode:
+        if "h" in self.mode:
             axis *= height
-        if 'w' in self.mode:
+        if "w" in self.mode:
             axis *= width
 
         view = (batch_size, -1, axis)

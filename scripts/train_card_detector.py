@@ -68,15 +68,24 @@ def main() -> None:
     augmentation_config = AugmentationConfig.load(args.augmentation_preset)
     pl.seed_everything(args.seed, workers=True)
     data = CardDataModule(
-        args.train_data, args.val_data, args.batch_size, args.num_workers, args.val_fraction, args.seed,
-        variant=variant, test_root=args.test_data, augment=not args.no_augmentation,
-        train_images_per_epoch=args.train_images_per_epoch, val_images_per_epoch=args.val_images_per_epoch,
+        args.train_data,
+        args.val_data,
+        args.batch_size,
+        args.num_workers,
+        args.val_fraction,
+        args.seed,
+        variant=variant,
+        test_root=args.test_data,
+        augment=not args.no_augmentation,
+        train_images_per_epoch=args.train_images_per_epoch,
+        val_images_per_epoch=args.val_images_per_epoch,
         augmentation_config=augmentation_config,
     )
     data.setup("fit")
     model = create_detector(
         DetectorConfig(variant, args.learning_rate, args.weight_decay, args.min_size, args.max_size),
-        weights_path=args.weights.expanduser().resolve(), repo_path=args.dinov3_repo.expanduser().resolve(),
+        weights_path=args.weights.expanduser().resolve(),
+        repo_path=args.dinov3_repo.expanduser().resolve(),
         initialize_pretrained=args.resume is None,
     )
     logger = CSVLogger(str(experiment_dir), name="")
@@ -84,31 +93,63 @@ def main() -> None:
     run_dir = Path(logger.log_dir)
     run_dir.mkdir(parents=True, exist_ok=True)
     tracker = create_wandb_logger(
-        run_dir, args.experiment_name, variant,
-        args.wandb_url, args.wandb_project, args.wandb_entity,
+        run_dir,
+        args.experiment_name,
+        variant,
+        args.wandb_url,
+        args.wandb_project,
+        args.wandb_entity,
     )
-    tracker.log_hyperparams({**dict(model.hparams), **json.loads(json.dumps(vars(args), default=str)),
-                            "augmentation_config": asdict(augmentation_config)})
+    tracker.log_hyperparams(
+        {
+            **dict(model.hparams),
+            **json.loads(json.dumps(vars(args), default=str)),
+            "augmentation_config": asdict(augmentation_config),
+        }
+    )
     print(f"W&B dashboard: {tracker.experiment.url}")
     (run_dir / "split.json").write_text(json.dumps(data.split_manifest, indent=2) + "\n")
-    (run_dir / "config.json").write_text(json.dumps({**vars(args), "augmentation_config": asdict(augmentation_config)}, default=str, indent=2) + "\n")
+    (run_dir / "config.json").write_text(
+        json.dumps({**vars(args), "augmentation_config": asdict(augmentation_config)}, default=str, indent=2) + "\n"
+    )
     monitor = f"val/{variant.selection_metric}"
     checkpoint = ModelCheckpoint(
-        dirpath=run_dir / "checkpoints", monitor=monitor, mode="max",
-        save_top_k=1, save_last=True, filename="epoch-{epoch:02d}", auto_insert_metric_name=False,
+        dirpath=run_dir / "checkpoints",
+        monitor=monitor,
+        mode="max",
+        save_top_k=1,
+        save_last=True,
+        filename="epoch-{epoch:02d}",
+        auto_insert_metric_name=False,
     )
-    early_stopping = EarlyStopping(monitor=monitor, mode="max", patience=args.early_stopping_patience,
-                                   min_delta=args.early_stopping_min_delta, check_on_train_epoch_end=False, verbose=True)
+    early_stopping = EarlyStopping(
+        monitor=monitor,
+        mode="max",
+        patience=args.early_stopping_patience,
+        min_delta=args.early_stopping_min_delta,
+        check_on_train_epoch_end=False,
+        verbose=True,
+    )
     epoch_evaluation = EpochEvaluation(
-        run_dir, tracker, data.test_dataset,
-        validation_overlay_ids=args.validation_overlay_ids, test_overlay_ids=args.test_overlay_ids,
-        score_threshold=args.score_threshold, iou_threshold=args.iou_threshold,
+        run_dir,
+        tracker,
+        data.test_dataset,
+        validation_overlay_ids=args.validation_overlay_ids,
+        test_overlay_ids=args.test_overlay_ids,
+        score_threshold=args.score_threshold,
+        iou_threshold=args.iou_threshold,
     )
     trainer = pl.Trainer(
-        max_epochs=args.epochs, accelerator=args.accelerator, devices=1, precision=args.precision,
-        logger=[logger, tracker], callbacks=[epoch_evaluation, early_stopping, LearningRateMonitor(logging_interval="epoch"), checkpoint], gradient_clip_val=1.0,
+        max_epochs=args.epochs,
+        accelerator=args.accelerator,
+        devices=1,
+        precision=args.precision,
+        logger=[logger, tracker],
+        callbacks=[epoch_evaluation, early_stopping, LearningRateMonitor(logging_interval="epoch"), checkpoint],
+        gradient_clip_val=1.0,
         log_every_n_steps=1,
-        fast_dev_run=args.fast_dev_run, default_root_dir=str(experiment_dir),
+        fast_dev_run=args.fast_dev_run,
+        default_root_dir=str(experiment_dir),
     )
     trainer.fit(model, datamodule=data, ckpt_path=args.resume)
     if checkpoint.best_model_path:

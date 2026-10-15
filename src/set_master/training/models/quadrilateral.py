@@ -13,11 +13,16 @@ def quadrilateral_geometry_loss(offsets: Tensor, expected: Tensor, visible: Tens
     """Match shape independently of which clockwise vertex starts the sequence."""
     if not visible.any():
         return offsets.sum() * 0
-    candidates = torch.stack([
-        (F.smooth_l1_loss(offsets, expected.roll(shift, dims=1), beta=1 / 9, reduction='none')
-         * visible.roll(shift, dims=1)[..., None]).sum(dim=(1, 2))
-        for shift in range(4)
-    ], dim=1)
+    candidates = torch.stack(
+        [
+            (
+                F.smooth_l1_loss(offsets, expected.roll(shift, dims=1), beta=1 / 9, reduction="none")
+                * visible.roll(shift, dims=1)[..., None]
+            ).sum(dim=(1, 2))
+            for shift in range(4)
+        ],
+        dim=1,
+    )
     return candidates.amin(dim=1).sum() / (visible.sum() * 2)
 
 
@@ -26,7 +31,9 @@ def portrait_axis_encoding(points: Tensor) -> Tensor:
     axis = (points[:, 2] + points[:, 3] - points[:, 0] - points[:, 1]) / 2
     x, y = axis.unbind(dim=1)
     # cos(2 theta), sin(2 theta): opposite directions share a target, sideways does not.
-    return torch.stack((x.square() - y.square(), 2 * x * y), dim=1) / axis.square().sum(dim=1, keepdim=True).clamp(min=1e-8)
+    return torch.stack((x.square() - y.square(), 2 * x * y), dim=1) / axis.square().sum(dim=1, keepdim=True).clamp(
+        min=1e-8
+    )
 
 
 def orient_quadrilaterals(points: Tensor, orientation: Tensor) -> Tensor:
@@ -53,20 +60,24 @@ class QuadrilateralRoIHeads(nn.Module):
             self.orientation_head.bias.copy_(torch.tensor([-1.0, 0.0]))
 
     def forward(
-        self, features: dict[str, Tensor], proposals: list[Tensor],
-        image_shapes: list[tuple[int, int]], targets: list[dict[str, Tensor]] | None = None,
+        self,
+        features: dict[str, Tensor],
+        proposals: list[Tensor],
+        image_shapes: list[tuple[int, int]],
+        targets: list[dict[str, Tensor]] | None = None,
     ) -> tuple[list[dict[str, Tensor]], dict[str, Tensor]]:
         results, losses = self.box_heads(features, proposals, image_shapes, targets)
         if self.training:
             if targets is None:
-                raise ValueError('Quadrilateral training requires corner targets')
+                raise ValueError("Quadrilateral training requires corner targets")
             sampled, matched, labels, _ = self.box_heads.select_training_samples(proposals, targets)
             positive = [label > 0 for label in labels]
             regions = [boxes[keep] for boxes, keep in zip(sampled, positive)]
-            points = torch.cat([target['keypoints'][indices[keep]]
-                                for target, indices, keep in zip(targets, matched, positive)])
+            points = torch.cat(
+                [target["keypoints"][indices[keep]] for target, indices, keep in zip(targets, matched, positive)]
+            )
         else:
-            regions = [result['boxes'] for result in results]
+            regions = [result["boxes"] for result in results]
         pooled = self.box_heads.box_roi_pool(features, regions, image_shapes)
         region_features = self.box_heads.box_head(pooled)
         offsets = self.regressor(region_features).reshape(-1, 4, 2)
@@ -77,12 +88,13 @@ class QuadrilateralRoIHeads(nn.Module):
         if self.training:
             expected = (points[..., :2] - center[:, None]) / size[:, None]
             visible = points[..., 2] > 0
-            losses['loss_quadrilateral'] = quadrilateral_geometry_loss(offsets, expected, visible)
+            losses["loss_quadrilateral"] = quadrilateral_geometry_loss(offsets, expected, visible)
             axis_targets = portrait_axis_encoding(points[..., :2])
             valid_orientation = visible.all(dim=1) & (axis_targets.square().sum(dim=1) > 0)
-            losses['loss_orientation'] = (
+            losses["loss_orientation"] = (
                 F.mse_loss(orientation[valid_orientation], axis_targets[valid_orientation])
-                if valid_orientation.any() else orientation.sum() * 0
+                if valid_orientation.any()
+                else orientation.sum() * 0
             )
         else:
             corners = offsets * size[:, None] + center[:, None]
@@ -92,12 +104,15 @@ class QuadrilateralRoIHeads(nn.Module):
                 edges = polygon.roll(-1, dims=1) - polygon
                 following = edges.roll(-1, dims=1)
                 cross = edges[..., 0] * following[..., 1] - edges[..., 1] * following[..., 0]
-                valid = (torch.isfinite(polygon).all(dim=(1, 2)) & (cross > 1e-4).all(dim=1)
-                         & torch.isfinite(direction).all(dim=1))
+                valid = (
+                    torch.isfinite(polygon).all(dim=(1, 2))
+                    & (cross > 1e-4).all(dim=1)
+                    & torch.isfinite(direction).all(dim=1)
+                )
                 for name, value in result.items():
                     result[name] = value[valid]
                 polygon = orient_quadrilaterals(polygon[valid], direction[valid])
-                result['keypoints'] = torch.cat((polygon, torch.ones_like(polygon[..., :1])), dim=2)
+                result["keypoints"] = torch.cat((polygon, torch.ones_like(polygon[..., :1])), dim=2)
         return results, losses
 
 
@@ -107,6 +122,6 @@ class QuadrilateralCardDetector(CardDetector):
     def build_detector(self, backbone: FrozenDinoFPN, min_size: int, max_size: int) -> nn.Module:
         detector = super().build_detector(backbone, min_size, max_size)
         if not isinstance(detector, FasterRCNN):
-            raise TypeError('Quadrilateral regression requires the Faster R-CNN box detector')
+            raise TypeError("Quadrilateral regression requires the Faster R-CNN box detector")
         detector.roi_heads = QuadrilateralRoIHeads(detector.roi_heads)
         return detector

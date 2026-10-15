@@ -21,9 +21,18 @@ from set_master.paths import BACKGROUNDS_DIR, TABLETOP_TEXTURES_DIR
 
 
 DEFAULT_QUERIES = (
-    '"empty table"', '"table top"', '"tabletop"', '"wood texture"',
-    '"wooden surface"', '"desk surface"', '"wood grain"', '"tablecloth"',
-    '"fabric texture"', '"stone texture"', '"marble texture"', '"laminate texture"',
+    '"empty table"',
+    '"table top"',
+    '"tabletop"',
+    '"wood texture"',
+    '"wooden surface"',
+    '"desk surface"',
+    '"wood grain"',
+    '"tablecloth"',
+    '"fabric texture"',
+    '"stone texture"',
+    '"marble texture"',
+    '"laminate texture"',
 )
 COMMONS_API = "https://commons.wikimedia.org/w/api.php"
 
@@ -57,8 +66,7 @@ def load_backgrounds(root: Path) -> list[BackgroundRecord]:
 def save_backgrounds(root: Path, records: list[BackgroundRecord], source: str = "Wikimedia Commons") -> None:
     root.mkdir(parents=True, exist_ok=True)
     temporary = root / "manifest.tmp"
-    temporary.write_text(json.dumps({"source": source, "images": [asdict(r) for r in records]},
-                                    indent=2) + "\n")
+    temporary.write_text(json.dumps({"source": source, "images": [asdict(r) for r in records]}, indent=2) + "\n")
     temporary.replace(root / "manifest.json")
 
 
@@ -87,10 +95,16 @@ def _search(query: str, user_agent: str, max_results: int) -> Iterator[dict[str,
     retrieved = 0
     while retrieved < max_results:
         parameters = {
-            "action": "query", "format": "json", "formatversion": 2,
-            "generator": "search", "gsrsearch": query, "gsrnamespace": 6,
-            "gsrlimit": min(10, max_results - retrieved), "prop": "imageinfo",
-            "iiprop": "url|size|mime|sha1|extmetadata", "iiurlwidth": 1440,
+            "action": "query",
+            "format": "json",
+            "formatversion": 2,
+            "generator": "search",
+            "gsrsearch": query,
+            "gsrnamespace": 6,
+            "gsrlimit": min(10, max_results - retrieved),
+            "prop": "imageinfo",
+            "iiprop": "url|size|mime|sha1|extmetadata",
+            "iiurlwidth": 1440,
             "iiextmetadatafilter": "Artist|LicenseShortName|LicenseUrl|ImageDescription",
             **continuation,
         }
@@ -107,9 +121,13 @@ def _search(query: str, user_agent: str, max_results: int) -> Iterator[dict[str,
 
 
 def download_backgrounds(
-    count: int = 1000, root: Path = BACKGROUNDS_DIR, queries: tuple[str, ...] = DEFAULT_QUERIES,
-    user_agent: str = "SetMasterBackgroundDownloader/1.0", min_side: int = 480,
-    max_results_per_query: int = 500, progress: Callable[[int, int], None] | None = None,
+    count: int = 1000,
+    root: Path = BACKGROUNDS_DIR,
+    queries: tuple[str, ...] = DEFAULT_QUERIES,
+    user_agent: str = "SetMasterBackgroundDownloader/1.0",
+    min_side: int = 480,
+    max_results_per_query: int = 500,
+    progress: Callable[[int, int], None] | None = None,
 ) -> list[BackgroundRecord]:
     """Download deduplicated candidates, retaining attribution and review decisions on reruns."""
     if count < 1 or min_side < 1 or max_results_per_query < 1 or not queries:
@@ -136,8 +154,10 @@ def download_backgrounds(
                 continue
             if min(info["width"], info["height"]) < min_side or info["sha1"] in source_hashes:
                 continue
-            metadata = {name: html.unescape(re.sub(r"<[^>]*>", "", value.get("value", "")))
-                        for name, value in info.get("extmetadata", {}).items()}
+            metadata = {
+                name: html.unescape(re.sub(r"<[^>]*>", "", value.get("value", "")))
+                for name, value in info.get("extmetadata", {}).items()
+            }
             license_name = metadata.get("LicenseShortName", "")
             if not license_name:
                 continue
@@ -162,11 +182,24 @@ def download_backgrounds(
                 raise OSError(f"Could not save {root / filename}")
             # A source image always belongs to one partition, including on resumed downloads.
             split = BackgroundSplit.VALIDATION if int(pixel_hash[:8], 16) % 10 == 0 else BackgroundSplit.TRAIN
-            records.append(BackgroundRecord(
-                filename, page["pageid"], page["title"], info["descriptionurl"], url,
-                info["sha1"], pixel_hash, metadata.get("Artist", ""), license_name, metadata.get("LicenseUrl", ""),
-                query, image.shape[1], image.shape[0], split.value,
-            ))
+            records.append(
+                BackgroundRecord(
+                    filename,
+                    page["pageid"],
+                    page["title"],
+                    info["descriptionurl"],
+                    url,
+                    info["sha1"],
+                    pixel_hash,
+                    metadata.get("Artist", ""),
+                    license_name,
+                    metadata.get("LicenseUrl", ""),
+                    query,
+                    image.shape[1],
+                    image.shape[0],
+                    split.value,
+                )
+            )
             source_hashes.add(info["sha1"])
             pixel_hashes.add(pixel_hash)
             save_backgrounds(root, records)
@@ -186,11 +219,12 @@ def crop_background(image: np.ndarray, width: int, height: int, x_fraction: floa
     resized = cv2.resize(image, (max(width, round(source_width * scale)), max(height, round(source_height * scale))))
     x = round((resized.shape[1] - width) * x_fraction)
     y = round((resized.shape[0] - height) * y_fraction)
-    return resized[y:y + height, x:x + width].copy()
+    return resized[y : y + height, x : x + width].copy()
 
 
 def download_tabletop_textures(
-    count: int = 100, root: Path = TABLETOP_TEXTURES_DIR,
+    count: int = 100,
+    root: Path = TABLETOP_TEXTURES_DIR,
     progress: Callable[[int, int], None] | None = None,
 ) -> list[BackgroundRecord]:
     """Download surface color maps from Poly Haven; keep source-level train/validation splits."""
@@ -200,10 +234,13 @@ def download_tabletop_textures(
     assets = json.loads(_read_url("https://api.polyhaven.com/assets?t=textures", user_agent))
     records = load_backgrounds(root)
     known = {record.source_url.rsplit("/", 1)[-1] for record in records}
-    candidates = [(name, asset) for name, asset in assets.items()
-                  if set(asset.get("categories", [])) & {"wood", "fabric", "carpet", "leather", "concrete"}
-                  and not set(asset.get("categories", [])) & {"bark", "outdoor", "terrain", "brick", "roofing"}
-                  and name not in known]
+    candidates = [
+        (name, asset)
+        for name, asset in assets.items()
+        if set(asset.get("categories", [])) & {"wood", "fabric", "carpet", "leather", "concrete"}
+        and not set(asset.get("categories", [])) & {"bark", "outdoor", "terrain", "brick", "roofing"}
+        and name not in known
+    ]
     random.Random(42).shuffle(candidates)
     (root / "images").mkdir(parents=True, exist_ok=True)
     failures: list[dict[str, str]] = []
@@ -225,11 +262,19 @@ def download_tabletop_textures(
                 raise OSError(f"Could not save {relative}")
             identity = hashlib.sha256(name.encode()).hexdigest()
             return BackgroundRecord(
-                file_name=relative, source_id=int(identity[:12], 16), title=asset["name"],
-                source_url=f"https://polyhaven.com/a/{name}", download_url=entry["url"],
-                source_sha1=hashlib.sha1(payload).hexdigest(), pixel_sha256=hashlib.sha256(image.tobytes()).hexdigest(),
-                author=", ".join(asset.get("authors", {})), license="CC0", license_url="https://creativecommons.org/publicdomain/zero/1.0/",
-                query="tabletop surface texture", width=image.shape[1], height=image.shape[0],
+                file_name=relative,
+                source_id=int(identity[:12], 16),
+                title=asset["name"],
+                source_url=f"https://polyhaven.com/a/{name}",
+                download_url=entry["url"],
+                source_sha1=hashlib.sha1(payload).hexdigest(),
+                pixel_sha256=hashlib.sha256(image.tobytes()).hexdigest(),
+                author=", ".join(asset.get("authors", {})),
+                license="CC0",
+                license_url="https://creativecommons.org/publicdomain/zero/1.0/",
+                query="tabletop surface texture",
+                width=image.shape[1],
+                height=image.shape[0],
                 split="validation" if int(identity[:8], 16) % 10 == 0 else "train",
             )
         except (HTTPError, URLError, TimeoutError, ValueError, OSError) as error:
@@ -239,7 +284,7 @@ def download_tabletop_textures(
 
     with ThreadPoolExecutor(max_workers=4) as executor:
         for start in range(0, len(candidates), 4):
-            batch = candidates[start:start + min(4, count - len(records))]
+            batch = candidates[start : start + min(4, count - len(records))]
             if not batch:
                 break
             for record in executor.map(download, batch):

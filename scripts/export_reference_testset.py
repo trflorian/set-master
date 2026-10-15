@@ -49,12 +49,14 @@ def export_testset(output_dir: Path) -> None:
         debug = image.copy()
         if "corners" not in record:
             raise ValueError(f"Missing explicit corner annotations in {source}")
-        if record.get('corner_order') != 'card_relative':
-            raise ValueError(f'Missing reviewed card-relative orientation in {source}')
+        if record.get("corner_order") != "card_relative":
+            raise ValueError(f"Missing reviewed card-relative orientation in {source}")
         for instance_id, vertices in enumerate(record["polygons"], start=1):
             polygon = np.asarray(vertices, dtype=np.int32)
             if (
-                polygon.ndim != 2 or polygon.shape[1] != 2 or len(polygon) < 3
+                polygon.ndim != 2
+                or polygon.shape[1] != 2
+                or len(polygon) < 3
                 or np.any(polygon < 0)
                 or np.any(polygon[:, 0] >= width)
                 or np.any(polygon[:, 1] >= height)
@@ -70,45 +72,66 @@ def export_testset(output_dir: Path) -> None:
                 raise ValueError(f"Overlapping card annotations in {source}")
             union[mask > 0] = 255
             instances[mask > 0] = instance_id
-            color = tuple(int(value) for value in cv2.cvtColor(
-                np.uint8([[[instance_id * 37 % 180, 180, 255]]]),
-                cv2.COLOR_HSV2BGR,
-            )[0, 0])
+            color = tuple(
+                int(value)
+                for value in cv2.cvtColor(
+                    np.uint8([[[instance_id * 37 % 180, 180, 255]]]),
+                    cv2.COLOR_HSV2BGR,
+                )[0, 0]
+            )
             colors[mask > 0] = color
-            coco["annotations"].append({
-                "id": annotation_id, "image_id": image_id, "category_id": 1,
-                "segmentation": [polygon.reshape(-1).tolist()],
-                "bbox": [x, y, w, h], "area": area, "iscrowd": 0,
-                "instance_id": instance_id,
-                **geometry_annotation(np.float32(record["corners"][instance_id - 1]), polygon.astype(np.float32),
-                                      card_relative=True),
-                "geometry_source": record["corner_annotation_method"],
-                "orientation_source": record['orientation_annotation_method'],
-            })
+            coco["annotations"].append(
+                {
+                    "id": annotation_id,
+                    "image_id": image_id,
+                    "category_id": 1,
+                    "segmentation": [polygon.reshape(-1).tolist()],
+                    "bbox": [x, y, w, h],
+                    "area": area,
+                    "iscrowd": 0,
+                    "instance_id": instance_id,
+                    **geometry_annotation(
+                        np.float32(record["corners"][instance_id - 1]), polygon.astype(np.float32), card_relative=True
+                    ),
+                    "geometry_source": record["corner_annotation_method"],
+                    "orientation_source": record["orientation_annotation_method"],
+                }
+            )
             annotation_id += 1
         debug[union > 0] = cv2.addWeighted(debug, 0.7, colors, 0.3, 0)[union > 0]
         image_annotations = [item for item in coco["annotations"] if item["image_id"] == image_id]
         debug = draw_annotation_geometry(debug, image_annotations)
-        for filename, pixels in ((mask_file, union), (instance_file, instances),
-                                 (f"debug/{stem}.jpg", debug)):
+        for filename, pixels in ((mask_file, union), (instance_file, instances), (f"debug/{stem}.jpg", debug)):
             if not cv2.imwrite(str(output_dir / filename), pixels):
                 raise OSError(f"Could not write {output_dir / filename}")
-        coco["images"].append({
-            "id": image_id, "file_name": image_file, "width": width, "height": height,
-            "mask_file": mask_file, "instance_mask_file": instance_file,
-            "debug_file": f"debug/{stem}.jpg",
-            "source_file_name": source.name,
-            "original_source_file_name": record["original_source"],
-        })
-        manifest.append({
-            "image_id": image_id, "file_name": image_file, "source_file_name": source.name,
-            "original_source_file_name": record["original_source"],
-            "scene_group": record["scene_group"], "derived_from": record.get("derived_from"),
-            "annotation_method": record["annotation_method"],
-            "card_count": len(record["polygons"]),
-        })
-    coco["categories"][0].update(keypoints=["top_left", "top_right", "bottom_right", "bottom_left"],
-                                 skeleton=[[1, 2], [2, 3], [3, 4], [4, 1]])
+        coco["images"].append(
+            {
+                "id": image_id,
+                "file_name": image_file,
+                "width": width,
+                "height": height,
+                "mask_file": mask_file,
+                "instance_mask_file": instance_file,
+                "debug_file": f"debug/{stem}.jpg",
+                "source_file_name": source.name,
+                "original_source_file_name": record["original_source"],
+            }
+        )
+        manifest.append(
+            {
+                "image_id": image_id,
+                "file_name": image_file,
+                "source_file_name": source.name,
+                "original_source_file_name": record["original_source"],
+                "scene_group": record["scene_group"],
+                "derived_from": record.get("derived_from"),
+                "annotation_method": record["annotation_method"],
+                "card_count": len(record["polygons"]),
+            }
+        )
+    coco["categories"][0].update(
+        keypoints=["top_left", "top_right", "bottom_right", "bottom_left"], skeleton=[[1, 2], [2, 3], [3, 4], [4, 1]]
+    )
     (output_dir / "annotations.json").write_text(json.dumps(coco, indent=2) + "\n")
     (output_dir / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
     print(f"Exported {len(manifest)} images and {annotation_id - 1} cards to {output_dir}")

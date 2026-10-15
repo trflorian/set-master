@@ -54,32 +54,33 @@ class IoU(object):
 
     def cal_iou(self, pred, gt):
         pred = (pred * 255).astype(np.uint8)
-            
+
         bins = np.linspace(0, 256, 257)
-        fg_hist, _ = np.histogram(pred[gt], bins=bins) # ture positive
-        bg_hist, _ = np.histogram(pred[~gt], bins=bins) # false positive
-        fg_w_thrs = np.cumsum(np.flip(fg_hist), axis=0) 
+        fg_hist, _ = np.histogram(pred[gt], bins=bins)  # ture positive
+        bg_hist, _ = np.histogram(pred[~gt], bins=bins)  # false positive
+        fg_w_thrs = np.cumsum(np.flip(fg_hist), axis=0)
         bg_w_thrs = np.cumsum(np.flip(bg_hist), axis=0)
         TPs = fg_w_thrs
-        Ps = fg_w_thrs + bg_w_thrs # positives
-        Ps[Ps == 0] = 1 
+        Ps = fg_w_thrs + bg_w_thrs  # positives
+        Ps[Ps == 0] = 1
         T = max(np.count_nonzero(gt), 1)
-        
+
         ious = TPs / (T + bg_w_thrs)
         return ious
 
     def get_results(self) -> dict:
         iou = np.mean(np.array(self.ious, dtype=_TYPE), axis=0)
         return dict(iou=dict(curve=iou))
-    
+
+
 class BIoU(object):
     def __init__(self, dilation_ratio=0.02):
         self.bious = []
         self.dilation_ratio = dilation_ratio
-            
+
     def mask_to_boundary(self, mask):
         h, w = mask.shape
-        img_diag = np.sqrt(h ** 2 + w ** 2)
+        img_diag = np.sqrt(h**2 + w**2)
         dilation = int(round(self.dilation_ratio * img_diag))
         if dilation < 1:
             dilation = 1
@@ -103,32 +104,33 @@ class BIoU(object):
         gt = (gt * 255).astype(np.uint8)
         gt = self.mask_to_boundary(gt)
         gt = gt > 128
-            
+
         bins = np.linspace(0, 256, 257)
-        fg_hist, _ = np.histogram(pred[gt], bins=bins) # ture positive
-        bg_hist, _ = np.histogram(pred[~gt], bins=bins) # false positive
-        fg_w_thrs = np.cumsum(np.flip(fg_hist), axis=0) 
+        fg_hist, _ = np.histogram(pred[gt], bins=bins)  # ture positive
+        bg_hist, _ = np.histogram(pred[~gt], bins=bins)  # false positive
+        fg_w_thrs = np.cumsum(np.flip(fg_hist), axis=0)
         bg_w_thrs = np.cumsum(np.flip(bg_hist), axis=0)
         TPs = fg_w_thrs
-        Ps = fg_w_thrs + bg_w_thrs # positives
-        Ps[Ps == 0] = 1 
+        Ps = fg_w_thrs + bg_w_thrs  # positives
+        Ps[Ps == 0] = 1
         T = max(np.count_nonzero(gt), 1)
-        
+
         ious = TPs / (T + bg_w_thrs)
         return ious
 
     def get_results(self) -> dict:
         biou = np.mean(np.array(self.bious, dtype=_TYPE), axis=0)
         return dict(biou=dict(curve=biou))
-    
+
+
 class TIoU(object):
     def __init__(self, dilation_ratio=0.001):
         self.tious = []
         self.dilation_ratio = dilation_ratio
-            
+
     def mask_to_boundary(self, mask):
         h, w = mask.shape
-        img_diag = np.sqrt(h ** 2 + w ** 2)
+        img_diag = np.sqrt(h**2 + w**2)
         dilation = int(round(self.dilation_ratio * img_diag))
         if dilation < 1:
             dilation = 1
@@ -148,23 +150,23 @@ class TIoU(object):
 
     def cal_tiou(self, pred, gt):
         pred = (pred * 255).astype(np.uint8)
-        
+
         gt = (gt * 255).astype(np.uint8)
         gt = self.mask_to_boundary(gt)
         gt = gt > 128
-        
+
         pred = pred * gt
-        
+
         bins = np.linspace(0, 256, 257)
-        fg_hist, _ = np.histogram(pred[gt], bins=bins) # ture positive
-        bg_hist, _ = np.histogram(pred[~gt], bins=bins) # false positive
-        fg_w_thrs = np.cumsum(np.flip(fg_hist), axis=0) 
+        fg_hist, _ = np.histogram(pred[gt], bins=bins)  # ture positive
+        bg_hist, _ = np.histogram(pred[~gt], bins=bins)  # false positive
+        fg_w_thrs = np.cumsum(np.flip(fg_hist), axis=0)
         bg_w_thrs = np.cumsum(np.flip(bg_hist), axis=0)
         TPs = fg_w_thrs
-        Ps = fg_w_thrs + bg_w_thrs # positives
-        Ps[Ps == 0] = 1 
+        Ps = fg_w_thrs + bg_w_thrs  # positives
+        Ps[Ps == 0] = 1
         T = max(np.count_nonzero(gt), 1)
-        
+
         ious = TPs / (T + bg_w_thrs)
         return ious
 
@@ -239,7 +241,7 @@ class Fmeasure(object):
         """
         pred = (pred * 255).astype(np.uint8)
         bins = np.linspace(0, 256, 257)
-        fg_hist, _ = np.histogram(pred[gt], bins=bins) 
+        fg_hist, _ = np.histogram(pred[gt], bins=bins)
         bg_hist, _ = np.histogram(pred[~gt], bins=bins)
         fg_w_thrs = np.cumsum(np.flip(fg_hist), axis=0)
         bg_w_thrs = np.cumsum(np.flip(bg_hist), axis=0)
@@ -491,7 +493,7 @@ class Smeasure(object):
         sigma_xy = np.sum((pred - x) * (gt - y)) / (N - 1)
 
         alpha = 4 * x * y * sigma_xy
-        beta = (x ** 2 + y ** 2) * (sigma_x + sigma_y)
+        beta = (x**2 + y**2) * (sigma_x + sigma_y)
 
         if alpha != 0:
             score = alpha / (beta + _EPS)
@@ -592,9 +594,7 @@ class Emeasure(object):
             results_parts = []
             for i, (part_numel, combination) in enumerate(zip(parts_numel, combinations)):
                 align_matrix_value = (
-                    2
-                    * (combination[0] * combination[1])
-                    / (combination[0] ** 2 + combination[1] ** 2 + _EPS)
+                    2 * (combination[0] * combination[1]) / (combination[0] ** 2 + combination[1] ** 2 + _EPS)
                 )
                 enhanced_matrix_value = (align_matrix_value + 1) ** 2 / 4
                 results_parts.append(enhanced_matrix_value * part_numel)
@@ -637,9 +637,7 @@ class Emeasure(object):
             results_parts = np.empty(shape=(4, 256), dtype=np.float64)
             for i, (part_numel, combination) in enumerate(zip(parts_numel_w_thrs, combinations)):
                 align_matrix_value = (
-                    2
-                    * (combination[0] * combination[1])
-                    / (combination[0] ** 2 + combination[1] ** 2 + _EPS)
+                    2 * (combination[0] * combination[1]) / (combination[0] ** 2 + combination[1] ** 2 + _EPS)
                 )
                 enhanced_matrix_value = (align_matrix_value + 1) ** 2 / 4
                 results_parts[i] = enhanced_matrix_value * part_numel
@@ -648,9 +646,7 @@ class Emeasure(object):
         em = enhanced_matrix_sum / (self.gt_size - 1 + _EPS)
         return em
 
-    def generate_parts_numel_combinations(
-        self, fg_fg_numel, fg_bg_numel, pred_fg_numel, pred_bg_numel
-    ):
+    def generate_parts_numel_combinations(self, fg_fg_numel, fg_bg_numel, pred_fg_numel, pred_bg_numel):
         bg_fg_numel = self.gt_fg_numel - fg_fg_numel
         bg_bg_numel = pred_bg_numel - bg_fg_numel
 
@@ -762,6 +758,7 @@ class WeightedFmeasure(object):
         weighted_fm = np.mean(np.array(self.weighted_fms, dtype=_TYPE))
         return dict(wfm=weighted_fm)
 
+
 class BoundaryAccuracy(object):
     def __init__(self):
         """
@@ -784,7 +781,7 @@ class BoundaryAccuracy(object):
 
     def step(self, pred: np.ndarray, gt: np.ndarray):
         # pred, gt = _prepare_data(pred, gt)
-        
+
         refined = gt.copy()
 
         rmin = cmin = 0
@@ -798,19 +795,19 @@ class BoundaryAccuracy(object):
         if refined_h != cmax:
             refined = np.array(Image.fromarray(pred).resize((cmax, rmax), Image.BILINEAR))
 
-        if not(gt.sum() < 32*32):
-            if not((cmax==cmin) or (rmax==rmin)):
-                class_refined_prob = np.array(Image.fromarray(pred).resize((cmax-cmin, rmax-rmin), Image.BILINEAR))
+        if not (gt.sum() < 32 * 32):
+            if not ((cmax == cmin) or (rmax == rmin)):
+                class_refined_prob = np.array(Image.fromarray(pred).resize((cmax - cmin, rmax - rmin), Image.BILINEAR))
                 refined[rmin:rmax, cmin:cmax] = class_refined_prob
-        
+
         pred = pred > 128
         gt = gt > 128
 
         ba = self.cal_ba(pred, gt)
         self.bas.append(ba)
-        
+
     def get_disk_kernel(self, radius):
-        return cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (radius*2+1, radius*2+1))
+        return cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (radius * 2 + 1, radius * 2 + 1))
 
     def cal_ba(self, pred: np.ndarray, gt: np.ndarray) -> np.ndarray:
         """
@@ -818,20 +815,20 @@ class BoundaryAccuracy(object):
 
         :return: ba
         """
-    
+
         gt = gt.astype(np.uint8)
         pred = pred.astype(np.uint8)
 
         h, w = gt.shape
 
         min_radius = 1
-        max_radius = (w+h)/300
+        max_radius = (w + h) / 300
         num_steps = 5
 
         pred_acc = [None] * num_steps
 
         for i in range(num_steps):
-            curr_radius = min_radius + int((max_radius-min_radius)/num_steps*i)
+            curr_radius = min_radius + int((max_radius - min_radius) / num_steps * i)
 
             kernel = self.get_disk_kernel(curr_radius)
             boundary_region = cv2.morphologyEx(gt, cv2.MORPH_GRADIENT, kernel) > 0
@@ -840,11 +837,11 @@ class BoundaryAccuracy(object):
             pred_in_bound = pred[boundary_region]
 
             num_edge_pixels = (boundary_region).sum()
-            num_pred_gd_pix = ((gt_in_bound) * (pred_in_bound) + (1-gt_in_bound) * (1-pred_in_bound)).sum()
+            num_pred_gd_pix = ((gt_in_bound) * (pred_in_bound) + (1 - gt_in_bound) * (1 - pred_in_bound)).sum()
 
             pred_acc[i] = num_pred_gd_pix / num_edge_pixels
 
-        ba = sum(pred_acc)/num_steps
+        ba = sum(pred_acc) / num_steps
         return ba
 
     def get_results(self) -> dict:

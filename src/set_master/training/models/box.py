@@ -19,12 +19,17 @@ DEFAULT_REPO = DINOV3_REPO_DIR
 
 class CardDetector(pl.LightningModule):
     """Frozen DINOv3 features with trainable task heads and validation metrics."""
+
     variant = DetectorVariant.BOX
 
     def __init__(
-        self, weights_path: str = str(DEFAULT_WEIGHTS), repo_path: str = str(DEFAULT_REPO),
-        learning_rate: float = 1e-3, weight_decay: float = 1e-4,
-        min_size: int = 640, max_size: int = 1280,
+        self,
+        weights_path: str = str(DEFAULT_WEIGHTS),
+        repo_path: str = str(DEFAULT_REPO),
+        learning_rate: float = 1e-3,
+        weight_decay: float = 1e-4,
+        min_size: int = 640,
+        max_size: int = 1280,
         initialize_pretrained: bool = True,
         variant: str | None = None,
     ) -> None:
@@ -35,20 +40,30 @@ class CardDetector(pl.LightningModule):
         self.hparams.variant = self.variant.value
         backbone = FrozenDinoFPN(weights_path, repo_path, initialize_pretrained)
         self.detector = self.build_detector(backbone, min_size, max_size)
-        self.box_map = (None if self.variant.is_semantic else
-                        MeanAveragePrecision(box_format="xyxy", iou_type="bbox", compute_on_cpu=True))
-        self.geometry_metrics = (GeometryMetrics(self.variant) if self.variant in
-                                 (DetectorVariant.ORIENTED, DetectorVariant.CORNERS, DetectorVariant.QUADRILATERAL) else None)
+        self.box_map = (
+            None
+            if self.variant.is_semantic
+            else MeanAveragePrecision(box_format="xyxy", iou_type="bbox", compute_on_cpu=True)
+        )
+        self.geometry_metrics = (
+            GeometryMetrics(self.variant)
+            if self.variant in (DetectorVariant.ORIENTED, DetectorVariant.CORNERS, DetectorVariant.QUADRILATERAL)
+            else None
+        )
         self.semantic_metrics = SemanticMetrics() if self.variant.is_semantic else None
-        self.mask_map = (MeanAveragePrecision(iou_type="segm")
-                         if self.variant == DetectorVariant.INSTANCE else None)
+        self.mask_map = MeanAveragePrecision(iou_type="segm") if self.variant == DetectorVariant.INSTANCE else None
 
     def build_detector(self, backbone: FrozenDinoFPN, min_size: int, max_size: int) -> nn.Module:
         return FasterRCNN(
-            backbone, num_classes=2, min_size=min_size, max_size=max_size,
-            image_mean=[0.485, 0.456, 0.406], image_std=[0.229, 0.224, 0.225],
+            backbone,
+            num_classes=2,
+            min_size=min_size,
+            max_size=max_size,
+            image_mean=[0.485, 0.456, 0.406],
+            image_std=[0.229, 0.224, 0.225],
             rpn_anchor_generator=AnchorGenerator(
-                sizes=((32,), (64,), (128,), (256,)), aspect_ratios=((0.5, 1.0, 2.0),) * 4,
+                sizes=((32,), (64,), (128,), (256,)),
+                aspect_ratios=((0.5, 1.0, 2.0),) * 4,
             ),
             box_roi_pool=MultiScaleRoIAlign(featmap_names=["0", "1", "2", "3"], output_size=7, sampling_ratio=2),
             box_score_thresh=0.05,
@@ -92,7 +107,7 @@ class CardDetector(pl.LightningModule):
         self._log_detection_metrics("test")
 
     def _log_detection_metrics(self, prefix: str) -> None:
-        for metric, label in ((self.box_map, ''), (self.mask_map, 'mask_')):
+        for metric, label in ((self.box_map, ""), (self.mask_map, "mask_")):
             if metric is not None:
                 metrics = metric.compute()
                 for name in ("map", "map_50", "map_75", "mar_100"):
@@ -110,5 +125,6 @@ class CardDetector(pl.LightningModule):
     def configure_optimizers(self) -> torch.optim.Optimizer:
         return torch.optim.AdamW(
             (parameter for parameter in self.parameters() if parameter.requires_grad),
-            lr=self.hparams.learning_rate, weight_decay=self.hparams.weight_decay,
+            lr=self.hparams.learning_rate,
+            weight_decay=self.hparams.weight_decay,
         )

@@ -6,7 +6,7 @@ from itertools import combinations
 
 from inspyrenet.inspyrenet_inference import mask_image
 
-IMG_DIR = 'images'
+IMG_DIR = "images"
 # mask_dir = 'results'
 
 CARD_WIDTH = 200
@@ -22,7 +22,7 @@ SET_COLORS = [
 
 
 def load_input_image(image_name: str, resize_lr):
-    image_fn = f'{IMG_DIR}/{image_name}.jpg'
+    image_fn = f"{IMG_DIR}/{image_name}.jpg"
 
     input_image_hr = cv2.imread(image_fn)
     input_image_lr = cv2.resize(input_image_hr, resize_lr)
@@ -84,21 +84,21 @@ def cards_from_contours(contours, img_size):
         if len(approx) == 4 and area >= 400:
             all_cards.append(approx)
         else:
-            print(f'disposing card... {area=} {len(approx)=}')
+            print(f"disposing card... {area=} {len(approx)=}")
 
-    print(f'Found {len(all_cards)} Cards!')
+    print(f"Found {len(all_cards)} Cards!")
 
     if len(all_cards) < 12:
-        print('Did not find all cards!')
+        print("Did not find all cards!")
     elif len(all_cards) > 12:
-        print('Found more than 12 cards. Deleting outlier(s)...')
+        print("Found more than 12 cards. Deleting outlier(s)...")
 
         print(all_cards[0].shape)
 
         # calculate the average x and y coordinates of all contours
         average_x = img_size[0] / 2  # np.mean([c[:, 0, 0] for c in all_cards], axis=0)
         average_y = img_size[1] / 2  # np.mean([c[:, 0, 1] for c in all_cards], axis=0)
-        average = np.array([average_x, average_y]) #np.stack((average_x, average_y), axis=1)
+        average = np.array([average_x, average_y])  # np.stack((average_x, average_y), axis=1)
 
         distances = []
         for card in all_cards:
@@ -179,11 +179,7 @@ def four_point_transform(image, pts):
     # (i.e. top-down view) of the image, again specifying points
     # in the top-left, top-right, bottom-right, and bottom-left
     # order
-    dst = np.array([
-        [0, 0],
-        [maxWidth - 1, 0],
-        [maxWidth - 1, maxHeight - 1],
-        [0, maxHeight - 1]], dtype="float32")
+    dst = np.array([[0, 0], [maxWidth - 1, 0], [maxWidth - 1, maxHeight - 1], [0, maxHeight - 1]], dtype="float32")
     # compute the perspective transform matrix and then apply it
     M = cv2.getPerspectiveTransform(rect, dst)
     warped = cv2.warpPerspective(image, M, (maxWidth, maxHeight))
@@ -238,8 +234,7 @@ def extract_card_properties(card_images, card_size):
         _, threshold = cv2.threshold(gray, 140, 255, cv2.THRESH_BINARY_INV)
 
         # using a findContours() function
-        contours, _ = cv2.findContours(
-            threshold, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        contours, _ = cv2.findContours(threshold, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
         total_polys = 0
         convex_polys = 0
@@ -254,7 +249,7 @@ def extract_card_properties(card_images, card_size):
             area = cv2.contourArea(contour)
 
             M = cv2.moments(contour)
-            if M['m00'] != 0:
+            if M["m00"] != 0:
                 cX = int(M["m10"] / M["m00"]) / card_size[0]
                 cY = int(M["m01"] / M["m00"]) / card_size[1]
             else:
@@ -263,7 +258,7 @@ def extract_card_properties(card_images, card_size):
 
             cf = area / card_area
             if cf < 0.07 or cf > 0.3 or cY < 0.1 or cY > 0.9 or cX < 0.1 or cX > 0.9:
-                print(f'skipping shape on card with area: {cf:.4f} {cX=:.2f} {cY=:.2f}')
+                print(f"skipping shape on card with area: {cf:.4f} {cX=:.2f} {cY=:.2f}")
                 continue
 
             shape_cnt += 1
@@ -284,8 +279,7 @@ def extract_card_properties(card_images, card_size):
 
             ## Determine Shape
             # cv2.approxPloyDP() function to approximate the shape
-            approx = cv2.approxPolyDP(
-                contour, 0.008 * cv2.arcLength(contour, True), True)
+            approx = cv2.approxPolyDP(contour, 0.008 * cv2.arcLength(contour, True), True)
 
             convexHull = cv2.convexHull(approx)
 
@@ -296,7 +290,7 @@ def extract_card_properties(card_images, card_size):
             convex_polys += len(convexHull)
             total_polys += len(approx)
 
-        card['cnt'] = shape_cnt
+        card["cnt"] = shape_cnt
 
         if len(lst_intensities) > 0:
             min_col = np.mean(lst_intensities, axis=0)
@@ -305,26 +299,26 @@ def extract_card_properties(card_images, card_size):
 
         col_chann = np.argmax(min_col)
 
-        card['chan'] = min_col.astype(int)
-        card['col_chann'] = col_chann
+        card["chan"] = min_col.astype(int)
+        card["col_chann"] = col_chann
 
         if col_chann == 0:  # Blue. Can be green or purple
             if min_col[1] - min_col[2] > 40:
-                card['col'] = 'green'
+                card["col"] = "green"
             else:
-                card['col'] = 'purple'
+                card["col"] = "purple"
         elif col_chann == 2:
             if min_col[2] - min_col[0] > 3:
-                card['col'] = 'red'
+                card["col"] = "red"
             else:
-                card['col'] = 'purple'
+                card["col"] = "purple"
         else:
             if min_col[1] - min_col[2] > 20:
-                card['col'] = 'green'
+                card["col"] = "green"
             elif min_col[0] - min_col[2] > 20:
-                card['col'] = 'purple'
+                card["col"] = "purple"
             else:
-                card['col'] = 'red'
+                card["col"] = "red"
 
         # if col_chann == 1:  # Green
         #     card['col'] = 'green'
@@ -346,11 +340,11 @@ def extract_card_properties(card_images, card_size):
             min_fill = np.min(np.linalg.norm(fill_intensities, axis=1))
         diff_fill = avg_fill - min_fill
         if diff_fill > 80:
-            card['fill'] = 'dotted'
+            card["fill"] = "dotted"
         elif avg_fill < 250:
-            card['fill'] = 'filled'
+            card["fill"] = "filled"
         else:
-            card['fill'] = 'empty'
+            card["fill"] = "empty"
 
         # card['avg_fill'] = avg_fill
         # card['diff_fill'] = diff_fill
@@ -365,11 +359,11 @@ def extract_card_properties(card_images, card_size):
         # card['avg_conv'] = int(avg_conv)
 
         if avg_polys < 10:
-            card['shape'] = 'rect'
+            card["shape"] = "rect"
         elif avg_polys - avg_conv < 2:
-            card['shape'] = 'ellipse'
+            card["shape"] = "ellipse"
         else:
-            card['shape'] = 'squiggely'
+            card["shape"] = "squiggely"
 
         # slice_center = cimg[:, cimg.shape[1]//2, 0]
 
@@ -383,8 +377,9 @@ def extract_card_properties(card_images, card_size):
         # cv2.drawContours(cimg, contours, -1, (255, 255, 0))
 
         for i, k in enumerate(card.keys()):
-            cv2.putText(cimg, f'{k}={card[k]}', [10, 20 + i * 20], fontFace=cv2.FONT_HERSHEY_PLAIN, fontScale=1,
-                        color=(0, 0, 0))
+            cv2.putText(
+                cimg, f"{k}={card[k]}", [10, 20 + i * 20], fontFace=cv2.FONT_HERSHEY_PLAIN, fontScale=1, color=(0, 0, 0)
+            )
 
         card_properties.append(card)
 
@@ -416,7 +411,7 @@ def create_card_grid(card_images, card_size, grid_rows, grid_cols):
         # contours, hierarchy = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
         # grid_image[col * img_height:col * img_height + img_height, row * img_width:row * img_width + img_width] = img
-        grid_image[col * h:col * h + h, row * w:row * w + w] = img
+        grid_image[col * h : col * h + h, row * w : row * w + w] = img
 
     return grid_image
 
@@ -424,22 +419,22 @@ def create_card_grid(card_images, card_size, grid_rows, grid_cols):
 def find_sets(card_properties):
     sets = []
 
-    print('Checking sets...')
+    print("Checking sets...")
 
     for three_cards in combinations(enumerate(card_properties), 3):
         is_set = check_set(three_cards)
         if is_set:
-            print('is a set:')
+            print("is a set:")
             for c in three_cards:
                 ind = c[0]
                 x = ind // 2
                 y = ind % 2
-                print(f'X={x + 1} Y={y + 1} PROPS={list(c[1].values())}')
+                print(f"X={x + 1} Y={y + 1} PROPS={list(c[1].values())}")
 
             # append index
             sets.append([c[0] for c in three_cards])
 
-    print(f'Found {len(sets)} sets!')
+    print(f"Found {len(sets)} sets!")
 
     return sets
 
@@ -462,11 +457,11 @@ def check_set(three_cards):
 
 
 def draw_sets(card_images, sets):
-    colors = ['#5D9E5C', '#F7B1E2', '#E7D782', '#79ABD7', '#8E276F']
+    colors = ["#5D9E5C", "#F7B1E2", "#E7D782", "#79ABD7", "#8E276F"]
 
     def hex_to_rgb(hex_code):
-        hex_code = hex_code.lstrip('#')
-        return [int(hex_code[i:i + 2], 16) for i in (0, 2, 4)]
+        hex_code = hex_code.lstrip("#")
+        return [int(hex_code[i : i + 2], 16) for i in (0, 2, 4)]
 
     for i, (card_set, col) in enumerate(zip(sets, colors)):
         print(i, col)
@@ -478,7 +473,7 @@ def draw_sets(card_images, sets):
 
 
 def main():
-    img_fn = '000004'
+    img_fn = "000004"
     # img_fn = '000007'
     # img_fn = '000008'
     # img_fn = '000002'
@@ -525,18 +520,12 @@ def main():
 
     card_images = draw_sets(card_images, sets)
 
-    card_grid = create_card_grid(
-        card_images=card_images,
-        card_size=card_size,
-        grid_rows=6,
-        grid_cols=2
-    )
+    card_grid = create_card_grid(card_images=card_images, card_size=card_size, grid_rows=6, grid_cols=2)
 
     overlay = input_image_hr.copy()
 
     for set_ind, card_set in enumerate(sets):
-
-        print(f'{set_ind} -> {card_set}')
+        print(f"{set_ind} -> {card_set}")
 
         for card_ind in card_set:
             cnt = card_contours[card_ind].copy()
@@ -545,7 +534,7 @@ def main():
             cnt[:, :, 0] = cnt[:, :, 0] * scale_y
 
             M = cv2.moments(cnt)
-            if M['m00'] != 0:
+            if M["m00"] != 0:
                 cX = int(M["m10"] / M["m00"])
                 cY = int(M["m01"] / M["m00"])
             else:
@@ -553,7 +542,7 @@ def main():
                 cY = 0
 
             center = (int(cX - 60 + set_ind * 40), int(cY))
-            print(f'{card_ind} -> {center}')
+            print(f"{card_ind} -> {center}")
 
             cv2.circle(overlay, center, 15, SET_COLORS[set_ind % 4], thickness=-1)
 
@@ -564,21 +553,21 @@ def main():
     img_set = cv2.addWeighted(overlay, alpha, img_set, 1 - alpha, 0)
 
     img_set = cv2.resize(img_set, (800, 600))
-    cv2.imshow(f'sets', img_set)
+    cv2.imshow(f"sets", img_set)
 
     # Show the grid
-    cv2.imshow('Grid', card_grid)
+    cv2.imshow("Grid", card_grid)
 
-    cv2.imshow('mask', mask)
+    cv2.imshow("mask", mask)
     # cv2.imshow('threshold', threshold)
 
     # cv2.imshow('edges', edges)
 
     # cv2.imshow('cont', img_cont)
-    cv2.imshow('img', input_image_lr)
+    cv2.imshow("img", input_image_lr)
     cv2.waitKey()
     cv2.destroyAllWindows()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

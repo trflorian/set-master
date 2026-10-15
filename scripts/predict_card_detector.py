@@ -35,17 +35,18 @@ def main() -> None:
         prediction = model([tensor])[0]
     args.output_dir.mkdir(parents=True, exist_ok=True)
     prediction = {name: value.cpu() for name, value in prediction.items()}
-    if 'semantic_mask' in prediction:
-        mask_name = 'semantic_mask.png'
-        mask = (prediction['semantic_mask'][0].numpy() >= 0.5).astype(np.uint8) * 255
+    if "semantic_mask" in prediction:
+        mask_name = "semantic_mask.png"
+        mask = (prediction["semantic_mask"][0].numpy() >= 0.5).astype(np.uint8) * 255
         if not cv2.imwrite(str(args.output_dir / mask_name), mask):
-            raise OSError('Could not save semantic mask')
-        debug = prediction_overlay(tensor, {'boxes': torch.empty((0, 4))}, prediction, args.score_threshold)
-        if not cv2.imwrite(str(args.output_dir / 'debug.jpg'), debug):
-            raise OSError('Could not save prediction debug image')
-        (args.output_dir / 'predictions.json').write_text(json.dumps(
-            {'image': str(args.image), 'semantic_mask': mask_name}, indent=2) + '\n')
-        print(f'Saved semantic card mask to {args.output_dir}')
+            raise OSError("Could not save semantic mask")
+        debug = prediction_overlay(tensor, {"boxes": torch.empty((0, 4))}, prediction, args.score_threshold)
+        if not cv2.imwrite(str(args.output_dir / "debug.jpg"), debug):
+            raise OSError("Could not save prediction debug image")
+        (args.output_dir / "predictions.json").write_text(
+            json.dumps({"image": str(args.image), "semantic_mask": mask_name}, indent=2) + "\n"
+        )
+        print(f"Saved semantic card mask to {args.output_dir}")
         return
     crops_dir = args.output_dir / "crops"
     crops_dir.mkdir(exist_ok=True)
@@ -65,29 +66,30 @@ def main() -> None:
             points = np.ascontiguousarray(prediction["keypoints"][index, :, :2].cpu().numpy())
         crop = image[top:bottom, left:right]
         if points is not None and cv2.isContourConvex(points) and abs(cv2.contourArea(points)) >= 1:
-            crop = rectify_card(image, points, card_relative='keypoints' in prediction)
+            crop = rectify_card(image, points, card_relative="keypoints" in prediction)
         if not cv2.imwrite(str(crops_dir / crop_name), crop):
             raise OSError(f"Could not save crop {crop_name}")
         detections.append({"bbox_xyxy": box, "score": score, "crop_box_xyxy": crop_box, "crop": f"crops/{crop_name}"})
-        if 'masks' in prediction:
-            masks_dir = args.output_dir / 'masks'
+        if "masks" in prediction:
+            masks_dir = args.output_dir / "masks"
             masks_dir.mkdir(exist_ok=True)
-            mask = (prediction['masks'][index, 0].numpy() >= 0.5).astype(np.uint8) * 255
+            mask = (prediction["masks"][index, 0].numpy() >= 0.5).astype(np.uint8) * 255
             if not cv2.imwrite(str(masks_dir / crop_name), mask):
-                raise OSError(f'Could not save mask {crop_name}')
-            detections[-1]['mask'] = f'masks/{crop_name}'
+                raise OSError(f"Could not save mask {crop_name}")
+            detections[-1]["mask"] = f"masks/{crop_name}"
         if points is not None:
             detections[-1]["corners"] = points.tolist()
             cv2.polylines(debug, [points.round().astype("int32")], True, (0, 200, 0), 2)
-            if 'keypoints' in prediction:
-                axis = np.rint([(points[0] + points[1]) / 2,
-                                (points[2] + points[3]) / 2]).astype(np.int32)
+            if "keypoints" in prediction:
+                axis = np.rint([(points[0] + points[1]) / 2, (points[2] + points[3]) / 2]).astype(np.int32)
                 cv2.line(debug, tuple(axis[0]), tuple(axis[1]), (255, 0, 255), 3, cv2.LINE_AA)
         cv2.rectangle(debug, (left, top), (right - 1, bottom - 1), (0, 200, 0), 2)
         cv2.putText(debug, f"card {score:.2f}", (left, max(16, top - 6)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 200, 0), 1)
-    if 'masks' in prediction:
-        debug = prediction_overlay(tensor, {'boxes': torch.empty((0, 4))}, prediction, args.score_threshold)
-    (args.output_dir / "predictions.json").write_text(json.dumps({"image": str(args.image), "detections": detections}, indent=2) + "\n")
+    if "masks" in prediction:
+        debug = prediction_overlay(tensor, {"boxes": torch.empty((0, 4))}, prediction, args.score_threshold)
+    (args.output_dir / "predictions.json").write_text(
+        json.dumps({"image": str(args.image), "detections": detections}, indent=2) + "\n"
+    )
     if not cv2.imwrite(str(args.output_dir / "debug.jpg"), debug):
         raise OSError("Could not save prediction debug image")
     print(f"Saved {len(detections)} card boxes and crops to {args.output_dir}")

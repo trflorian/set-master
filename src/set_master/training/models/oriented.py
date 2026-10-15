@@ -31,11 +31,18 @@ class OrientedDenseDetector(nn.Module):
         super().__init__()
         self.backbone = backbone
         self.transform = GeneralizedRCNNTransform(
-            min_size, max_size, [0.485, 0.456, 0.406], [0.229, 0.224, 0.225],
+            min_size,
+            max_size,
+            [0.485, 0.456, 0.406],
+            [0.229, 0.224, 0.225],
         )
         self.head = nn.Sequential(
-            nn.Conv2d(256, 256, 3, padding=1), nn.GroupNorm(32, 256), nn.ReLU(),
-            nn.Conv2d(256, 256, 3, padding=1), nn.GroupNorm(32, 256), nn.ReLU(),
+            nn.Conv2d(256, 256, 3, padding=1),
+            nn.GroupNorm(32, 256),
+            nn.ReLU(),
+            nn.Conv2d(256, 256, 3, padding=1),
+            nn.GroupNorm(32, 256),
+            nn.ReLU(),
         )
         self.classifier = nn.Conv2d(256, 1, 3, padding=1)
         # dx, dy, log(width), log(height), sin(2 angle), cos(2 angle).
@@ -47,7 +54,9 @@ class OrientedDenseDetector(nn.Module):
             self.regressor.bias[5] = 1
 
     def forward(
-        self, images: list[Tensor], targets: list[dict[str, Tensor]] | None = None,
+        self,
+        images: list[Tensor],
+        targets: list[dict[str, Tensor]] | None = None,
     ) -> dict[str, Tensor] | list[dict[str, Tensor]]:
         if self.training and targets is None:
             raise ValueError("Oriented training requires targets")
@@ -60,8 +69,9 @@ class OrientedDenseDetector(nn.Module):
             shared = self.head(feature)
             height, width = feature.shape[-2:]
             stride = feature.new_tensor([padded_width / width, padded_height / height])
-            yy, xx = torch.meshgrid(torch.arange(height, device=feature.device),
-                                    torch.arange(width, device=feature.device), indexing="ij")
+            yy, xx = torch.meshgrid(
+                torch.arange(height, device=feature.device), torch.arange(width, device=feature.device), indexing="ij"
+            )
             grid = torch.stack((xx, yy), dim=-1).reshape(-1, 2).to(feature.dtype)
             grids.append((grid + 0.5) * stride)
             strides.append(stride.expand(len(grid), 2))
@@ -108,20 +118,31 @@ class OrientedDenseDetector(nn.Module):
                 positive = assigned >= 0
                 classes[positive] = 1
                 count = positive.sum().clamp(min=1)
-                classification_loss = classification_loss + sigmoid_focal_loss(
-                    scores[index][valid], classes[valid], reduction="sum",
-                ) / count
+                classification_loss = (
+                    classification_loss
+                    + sigmoid_focal_loss(
+                        scores[index][valid],
+                        classes[valid],
+                        reduction="sum",
+                    )
+                    / count
+                )
                 if positive.any():
                     selected_boxes = boxes[assigned[positive]]
                     angles = torch.deg2rad(selected_boxes[:, 4]) * 2
-                    expected = torch.cat((
-                        (selected_boxes[:, :2] - centers[positive]) / stride_xy[positive],
-                        (selected_boxes[:, 2:4] / stride_xy[positive]).log(),
-                        torch.stack((angles.sin(), angles.cos()), dim=1),
-                    ), dim=1)
+                    expected = torch.cat(
+                        (
+                            (selected_boxes[:, :2] - centers[positive]) / stride_xy[positive],
+                            (selected_boxes[:, 2:4] / stride_xy[positive]).log(),
+                            torch.stack((angles.sin(), angles.cos()), dim=1),
+                        ),
+                        dim=1,
+                    )
                     geometry_loss = geometry_loss + F.smooth_l1_loss(regression[index][positive], expected)
-            return {"loss_classifier": classification_loss / len(images),
-                    "loss_oriented_geometry": geometry_loss / len(images)}
+            return {
+                "loss_classifier": classification_loss / len(images),
+                "loss_oriented_geometry": geometry_loss / len(images),
+            }
         predictions = []
         for index, (height, width) in enumerate(batch.image_sizes):
             confidence = scores[index].sigmoid()
@@ -150,9 +171,15 @@ class OrientedDenseDetector(nn.Module):
             axis_boxes[:, 0::2].clamp_(0, source_width)
             axis_boxes[:, 1::2].clamp_(0, source_height)
             nonempty = (axis_boxes[:, 2] > axis_boxes[:, 0]) & (axis_boxes[:, 3] > axis_boxes[:, 1])
-            predictions.append({"boxes": axis_boxes[nonempty], "oriented_boxes": original_obbs[nonempty],
-                                "scores": confidence[nonempty], "polygons": points[nonempty],
-                                "labels": torch.ones(int(nonempty.sum()), dtype=torch.int64, device=centers.device)})
+            predictions.append(
+                {
+                    "boxes": axis_boxes[nonempty],
+                    "oriented_boxes": original_obbs[nonempty],
+                    "scores": confidence[nonempty],
+                    "polygons": points[nonempty],
+                    "labels": torch.ones(int(nonempty.sum()), dtype=torch.int64, device=centers.device),
+                }
+            )
         return predictions
 
 

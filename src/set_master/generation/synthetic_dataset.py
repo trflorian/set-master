@@ -11,7 +11,17 @@ import numpy as np
 
 from set_master.generation.card import draw_card, draw_card_surface
 from set_master.generation.features import FeatureStyle
-from set_master.models import BackgroundSplit, BackgroundType, Card, Color, Number, Shading, ShadingPattern, Shape, SceneLayout
+from set_master.models import (
+    BackgroundSplit,
+    BackgroundType,
+    Card,
+    Color,
+    Number,
+    Shading,
+    ShadingPattern,
+    Shape,
+    SceneLayout,
+)
 from set_master.paths import BACKGROUNDS_DIR, SYNTHETIC_DATASETS_DIR
 from set_master.generation.backgrounds import BackgroundRecord, crop_background, load_backgrounds
 from set_master.geometry import geometry_annotation
@@ -82,7 +92,14 @@ class DatasetConfig:
             raise ValueError("Select portrait (0) and/or landscape (90) layout orientations")
         if not self.layouts:
             raise ValueError("Select at least one scene layout")
-        for name in ("scene_perspective", "layout_gap", "shadow_opacity", "illumination_strength", "glare_strength", "glare_radius_ratio"):
+        for name in (
+            "scene_perspective",
+            "layout_gap",
+            "shadow_opacity",
+            "illumination_strength",
+            "glare_strength",
+            "glare_radius_ratio",
+        ):
             low, high = getattr(self, name)
             if not 0 <= low <= high <= 1:
                 raise ValueError(f"{name} must be ordered and between zero and one")
@@ -99,11 +116,22 @@ class DatasetConfig:
         if self.run_name is not None and (not self.run_name or Path(self.run_name).name != self.run_name):
             raise ValueError("Run name must be a non-empty directory name")
         for name in (
-            "cards_per_image", "card_width", "card_aspect_ratio", "rotation_degrees", "perspective_jitter",
-            "skew_x_degrees", "skew_y_degrees",
-            "feature_count", "feature_width_ratio", "feature_height_ratio",
-            "symbol_spacing_ratio", "corner_radius_ratio", "stripe_spacing",
-            "line_thickness", "squiggle_amplitude", "squiggle_waves",
+            "cards_per_image",
+            "card_width",
+            "card_aspect_ratio",
+            "rotation_degrees",
+            "perspective_jitter",
+            "skew_x_degrees",
+            "skew_y_degrees",
+            "feature_count",
+            "feature_width_ratio",
+            "feature_height_ratio",
+            "symbol_spacing_ratio",
+            "corner_radius_ratio",
+            "stripe_spacing",
+            "line_thickness",
+            "squiggle_amplitude",
+            "squiggle_waves",
             "squiggle_thickness",
         ):
             low, high = getattr(self, name)
@@ -162,13 +190,20 @@ def _rotated_card(
     translation = np.array([[1, 0, -minimum[0]], [0, 1, -minimum[1]], [0, 0, 1]])
     transform = translation @ transform
     rotated_sprite = cv2.warpPerspective(
-        sprite, transform, (rotated_width, rotated_height),
-        flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT,
+        sprite,
+        transform,
+        (rotated_width, rotated_height),
+        flags=cv2.INTER_LINEAR,
+        borderMode=cv2.BORDER_CONSTANT,
         borderValue=(255, 255, 255),
     )
     rotated_mask = cv2.warpPerspective(
-        source_mask, transform, (rotated_width, rotated_height),
-        flags=cv2.INTER_NEAREST, borderMode=cv2.BORDER_CONSTANT, borderValue=0,
+        source_mask,
+        transform,
+        (rotated_width, rotated_height),
+        flags=cv2.INTER_NEAREST,
+        borderMode=cv2.BORDER_CONSTANT,
+        borderValue=0,
     )
     corners = cv2.perspectiveTransform(corners.reshape(1, 4, 2), transform)[0]
     return rotated_sprite, rotated_mask, corners
@@ -189,8 +224,12 @@ def _annotation_polygon(mask: np.ndarray, offset_x: int, offset_y: int) -> list[
 
 
 def _finish_scene(
-    image: np.ndarray, background: np.ndarray, instances: np.ndarray, annotations: list[dict[str, Any]],
-    config: DatasetConfig, rng: random.Random,
+    image: np.ndarray,
+    background: np.ndarray,
+    instances: np.ndarray,
+    annotations: list[dict[str, Any]],
+    config: DatasetConfig,
+    rng: random.Random,
 ) -> tuple[np.ndarray, np.ndarray, list[dict[str, Any]]]:
     """Warp the shared plane and rebuild visible geometry after card occlusion."""
     height, width = image.shape[:2]
@@ -198,15 +237,15 @@ def _finish_scene(
     source = np.float32([[0, 0], [width - 1, 0], [width - 1, height - 1], [0, height - 1]])
     inset = strength * width * 0.35
     top = strength * height * 0.5
-    destination = np.float32([[inset, top], [width - 1 - inset, top],
-                             [width - 1, height - 1], [0, height - 1]])
+    destination = np.float32([[inset, top], [width - 1 - inset, top], [width - 1, height - 1], [0, height - 1]])
     if rng.random() < 0.5:
         destination[:, 1] = height - 1 - destination[::-1, 1]
         destination[:, 0] = destination[::-1, 0]
     transform = cv2.getPerspectiveTransform(source, destination)
     warped_background = cv2.warpPerspective(background, transform, (width, height), borderMode=cv2.BORDER_REFLECT_101)
-    footprint = cv2.warpPerspective(np.ones((height, width), dtype=np.uint8), transform,
-                                   (width, height), flags=cv2.INTER_NEAREST)
+    footprint = cv2.warpPerspective(
+        np.ones((height, width), dtype=np.uint8), transform, (width, height), flags=cv2.INTER_NEAREST
+    )
     image = cv2.warpPerspective(image, transform, (width, height))
     # Extend only the background: reflecting rendered cards would introduce unlabeled duplicates.
     image[footprint == 0] = warped_background[footprint == 0]
@@ -218,8 +257,11 @@ def _finish_scene(
         if not len(xs):
             continue
         contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        polygons = [cv2.approxPolyDP(contour, 0.75, True).reshape(-1, 2)
-                    for contour in contours if cv2.contourArea(contour) >= 1]
+        polygons = [
+            cv2.approxPolyDP(contour, 0.75, True).reshape(-1, 2)
+            for contour in contours
+            if cv2.contourArea(contour) >= 1
+        ]
         polygons = [polygon for polygon in polygons if len(polygon) >= 3]
         if not polygons:
             raise ValueError("Visible card has no valid segmentation contour")
@@ -230,7 +272,7 @@ def _finish_scene(
         keypoints = np.float32(annotation["keypoints"]).reshape(4, 3)
         for point in keypoints:
             x, y = np.rint(point[:2]).astype(int)
-            neighborhood = instances[max(0, y - 3):min(height, y + 4), max(0, x - 3):min(width, x + 4)]
+            neighborhood = instances[max(0, y - 3) : min(height, y + 4), max(0, x - 3) : min(width, x + 4)]
             if not np.any(neighborhood == annotation["id"]):
                 point[2] = 1
         annotation["keypoints"] = keypoints.flatten().tolist()
@@ -255,7 +297,7 @@ def _finish_scene(
         left, top = max(0, int(center[0] - 3 * radius)), max(0, int(center[1] - 3 * radius))
         right, bottom = min(width, int(center[0] + 3 * radius) + 1), min(height, int(center[1] + 3 * radius) + 1)
         yy, xx = np.mgrid[top:bottom, left:right]
-        light = np.exp(-((xx - center[0]) ** 2 + (yy - center[1]) ** 2) / (2 * radius ** 2))
+        light = np.exp(-((xx - center[0]) ** 2 + (yy - center[1]) ** 2) / (2 * radius**2))
         alpha = light[..., None] * rng.uniform(*config.glare_strength)
         view = image[top:bottom, left:right]
         view[:] = np.clip(view * (1 - alpha) + 255 * alpha, 0, 255).astype(np.uint8)
@@ -268,11 +310,16 @@ def generate_coco_dataset(config: DatasetConfig) -> Path:
     background_rng = random.Random(config.seed + 1)
     backgrounds: list[BackgroundRecord] = []
     if config.background_type != BackgroundType.GRAY:
-        backgrounds = [record for record in load_backgrounds(config.background_dir)
-                       if record.approved and record.split == config.background_split.value]
+        backgrounds = [
+            record
+            for record in load_backgrounds(config.background_dir)
+            if record.approved and record.split == config.background_split.value
+        ]
         if not backgrounds:
-            raise ValueError(f"No approved {config.background_split.value} backgrounds in {config.background_dir}. "
-                             "Download and review backgrounds in download_backgrounds.ipynb first.")
+            raise ValueError(
+                f"No approved {config.background_split.value} backgrounds in {config.background_dir}. "
+                "Download and review backgrounds in download_backgrounds.ipynb first."
+            )
     license_keys = sorted({(record.license, record.license_url) for record in backgrounds})
     license_ids = {key: index + 1 for index, key in enumerate(license_keys)}
     run_name = config.run_name or datetime.now().strftime("run_%Y%m%d_%H%M%S_%f")
@@ -293,16 +340,19 @@ def generate_coco_dataset(config: DatasetConfig) -> Path:
             dtype=np.uint8,
         )
         background = None
-        if (config.background_type == BackgroundType.REAL_SCENE or
-                config.background_type == BackgroundType.MIXED and
-                background_rng.random() < config.real_background_probability):
+        if (
+            config.background_type == BackgroundType.REAL_SCENE
+            or config.background_type == BackgroundType.MIXED
+            and background_rng.random() < config.real_background_probability
+        ):
             background = background_rng.choice(backgrounds)
             path = config.background_dir / background.file_name
             source = cv2.imread(str(path))
             if source is None:
                 raise FileNotFoundError(f"Could not read background {path}")
-            image = crop_background(source, config.image_width, config.image_height,
-                                    background_rng.random(), background_rng.random())
+            image = crop_background(
+                source, config.image_width, config.image_height, background_rng.random(), background_rng.random()
+            )
         scene_background = image.copy()
         # Float32 supports nearest-neighbor OpenCV warps while preserving these integer instance IDs.
         occupied = np.zeros((config.image_height, config.image_width), dtype=np.float32)
@@ -323,14 +373,22 @@ def generate_coco_dataset(config: DatasetConfig) -> Path:
             packing_width = math.sqrt(config.image_width * config.image_height * 0.25 * aspect / target_count)
             layout_width = min(layout_width, max(config.card_width[0], round(packing_width)))
         layout_height = round(layout_width / aspect)
-        surface_width, surface_height = ((layout_width, layout_height) if layout_angle == 0
-                                         else (layout_height, layout_width))
-        fit = (1.0 if layout == SceneLayout.SCATTERED else
-               min(1.0, config.image_width / (columns * surface_width * (1 + gap) + 10),
-                   config.image_height / (rows * surface_height * (1 + gap) + 10)))
+        surface_width, surface_height = (
+            (layout_width, layout_height) if layout_angle == 0 else (layout_height, layout_width)
+        )
+        fit = (
+            1.0
+            if layout == SceneLayout.SCATTERED
+            else min(
+                1.0,
+                config.image_width / (columns * surface_width * (1 + gap) + 10),
+                config.image_height / (rows * surface_height * (1 + gap) + 10),
+            )
+        )
         layout_width, layout_height = max(8, round(layout_width * fit)), max(12, round(layout_height * fit))
-        surface_width, surface_height = ((layout_width, layout_height) if layout_angle == 0
-                                         else (layout_height, layout_width))
+        surface_width, surface_height = (
+            (layout_width, layout_height) if layout_angle == 0 else (layout_height, layout_width)
+        )
         cell_width = surface_width * (1 + gap)
         cell_height = surface_height * (1 + gap)
         layout_left = (config.image_width - columns * cell_width) / 2
@@ -368,21 +426,35 @@ def generate_coco_dataset(config: DatasetConfig) -> Path:
                     shading=rng.choice(config.shadings),
                     number=number,
                 )
-                angle = (rng.uniform(*config.rotation_degrees) if layout == SceneLayout.SCATTERED
-                         else layout_angle + rng.uniform(-config.layout_rotation_jitter, config.layout_rotation_jitter))
+                angle = (
+                    rng.uniform(*config.rotation_degrees)
+                    if layout == SceneLayout.SCATTERED
+                    else layout_angle + rng.uniform(-config.layout_rotation_jitter, config.layout_rotation_jitter)
+                )
                 skew_angles = (rng.uniform(*config.skew_x_degrees), rng.uniform(*config.skew_y_degrees))
                 jitter = rng.uniform(*config.perspective_jitter)
                 if layout != SceneLayout.SCATTERED:
                     skew_angles = (0.0, 0.0)
                     jitter = 0.0
-                offsets = np.float32([
-                    [rng.uniform(0, jitter) * width, rng.uniform(0, jitter) * height],
-                    [-rng.uniform(0, jitter) * width, rng.uniform(0, jitter) * height],
-                    [-rng.uniform(0, jitter) * width, -rng.uniform(0, jitter) * height],
-                    [rng.uniform(0, jitter) * width, -rng.uniform(0, jitter) * height],
-                ])
+                offsets = np.float32(
+                    [
+                        [rng.uniform(0, jitter) * width, rng.uniform(0, jitter) * height],
+                        [-rng.uniform(0, jitter) * width, rng.uniform(0, jitter) * height],
+                        [-rng.uniform(0, jitter) * width, -rng.uniform(0, jitter) * height],
+                        [rng.uniform(0, jitter) * width, -rng.uniform(0, jitter) * height],
+                    ]
+                )
                 rotated_sprite, rotated_mask, corners = _rotated_card(
-                    card, width, height, radius, feature_size, round(spacing), style, angle, offsets, skew_angles,
+                    card,
+                    width,
+                    height,
+                    radius,
+                    feature_size,
+                    round(spacing),
+                    style,
+                    angle,
+                    offsets,
+                    skew_angles,
                 )
                 card_height, card_width = rotated_mask.shape
                 if card_width > config.image_width or card_height > config.image_height:
@@ -400,34 +472,45 @@ def generate_coco_dataset(config: DatasetConfig) -> Path:
                     # Keep the visible surface inside its cell, including after local rotation.
                     jitter_x = min(jitter * cell_width, (cell_width - surface_width) / 2)
                     jitter_y = min(jitter * cell_height, (cell_height - surface_height) / 2)
-                    center_x = layout_left + (card_index % columns + 0.5) * cell_width + rng.uniform(-jitter_x, jitter_x)
-                    center_y = layout_top + (card_index // columns + 0.5) * cell_height + rng.uniform(-jitter_y, jitter_y)
+                    center_x = (
+                        layout_left + (card_index % columns + 0.5) * cell_width + rng.uniform(-jitter_x, jitter_x)
+                    )
+                    center_y = (
+                        layout_top + (card_index // columns + 0.5) * cell_height + rng.uniform(-jitter_y, jitter_y)
+                    )
                     x = int(np.clip(center_x - card_width / 2, 0, config.image_width - card_width))
                     y = int(np.clip(center_y - card_height / 2, 0, config.image_height - card_height))
                 mask_view = rotated_mask > 0
-                occupied_view = occupied[y:y + card_height, x:x + card_width]
+                occupied_view = occupied[y : y + card_height, x : x + card_width]
                 overlap = occupied_view[mask_view]
                 overlap_count = np.count_nonzero(overlap)
                 if overlap_count and (not allow_overlap or overlap_count / len(overlap) > config.max_overlap_fraction):
                     continue
                 if overlap_count:
                     ids, counts = np.unique(overlap[overlap > 0], return_counts=True)
-                    if any(count / np.count_nonzero(occupied == instance_id) > config.max_overlap_fraction
-                           for instance_id, count in zip(ids, counts)):
+                    if any(
+                        count / np.count_nonzero(occupied == instance_id) > config.max_overlap_fraction
+                        for instance_id, count in zip(ids, counts)
+                    ):
                         continue
 
                 if shadow_strength:
                     padding = config.shadow_blur + max(abs(shadow_dx), abs(shadow_dy))
                     left, top = max(0, x - padding), max(0, y - padding)
-                    right, bottom = min(config.image_width, x + card_width + padding), min(config.image_height, y + card_height + padding)
+                    right, bottom = (
+                        min(config.image_width, x + card_width + padding),
+                        min(config.image_height, y + card_height + padding),
+                    )
                     shadow = np.zeros((bottom - top, right - left), dtype=np.float32)
-                    shadow[y - top:y - top + card_height, x - left:x - left + card_width] = mask_view
-                    shadow = cv2.warpAffine(shadow, np.float32([[1, 0, shadow_dx], [0, 1, shadow_dy]]), (right - left, bottom - top))
+                    shadow[y - top : y - top + card_height, x - left : x - left + card_width] = mask_view
+                    shadow = cv2.warpAffine(
+                        shadow, np.float32([[1, 0, shadow_dx], [0, 1, shadow_dy]]), (right - left, bottom - top)
+                    )
                     shadow = cv2.GaussianBlur(shadow, (config.shadow_blur, config.shadow_blur), 0)
                     view = image[top:bottom, left:right]
                     view[:] = np.clip(view * (1 - shadow_strength * shadow[..., None]), 0, 255).astype(np.uint8)
 
-                image_view = image[y:y + card_height, x:x + card_width]
+                image_view = image[y : y + card_height, x : x + card_width]
                 image_view[mask_view] = rotated_sprite[mask_view]
                 occupied_view[mask_view] = annotation_id
 
@@ -443,17 +526,21 @@ def generate_coco_dataset(config: DatasetConfig) -> Path:
                     "segmentation": [_annotation_polygon(rotated_mask, x, y)],
                     "iscrowd": 0,
                 }
-                annotation.update(geometry_annotation(
-                    corners + np.float32([x, y]),
-                    np.float32(annotation["segmentation"][0]).reshape(-1, 2),
-                    card_relative=True,
-                ))
+                annotation.update(
+                    geometry_annotation(
+                        corners + np.float32([x, y]),
+                        np.float32(annotation["segmentation"][0]).reshape(-1, 2),
+                        card_relative=True,
+                    )
+                )
                 annotation["geometry_source"] = "render_transform"
                 annotation["orientation_source"] = "render_transform"
-                annotation["render_transform"] = {"rotation_degrees": angle,
-                                                  "skew_x_degrees": skew_angles[0],
-                                                  "skew_y_degrees": skew_angles[1],
-                                                  "perspective_jitter": jitter}
+                annotation["render_transform"] = {
+                    "rotation_degrees": angle,
+                    "skew_x_degrees": skew_angles[0],
+                    "skew_y_degrees": skew_angles[1],
+                    "perspective_jitter": jitter,
+                }
                 image_annotations.append(annotation)
                 annotation_id += 1
                 placed = True
@@ -466,7 +553,9 @@ def generate_coco_dataset(config: DatasetConfig) -> Path:
                     "Increase the image size, reduce card sizes/count, or reduce the rotation range."
                 )
 
-        image, binary_mask, image_annotations = _finish_scene(image, scene_background, occupied, image_annotations, config, rng)
+        image, binary_mask, image_annotations = _finish_scene(
+            image, scene_background, occupied, image_annotations, config, rng
+        )
         image_name = f"{image_id:06d}.jpg"
         mask_name = f"{image_id:06d}.png"
         if not cv2.imwrite(str(run_dir / "images" / image_name), image):
@@ -497,9 +586,15 @@ def generate_coco_dataset(config: DatasetConfig) -> Path:
         "licenses": [{"id": license_ids[key], "name": key[0], "url": key[1]} for key in license_keys],
         "images": images,
         "annotations": annotations,
-        "categories": [{"id": 1, "name": "card", "supercategory": "object",
-                        "keypoints": ["top_left", "top_right", "bottom_right", "bottom_left"],
-                        "skeleton": [[1, 2], [2, 3], [3, 4], [4, 1]]}],
+        "categories": [
+            {
+                "id": 1,
+                "name": "card",
+                "supercategory": "object",
+                "keypoints": ["top_left", "top_right", "bottom_right", "bottom_left"],
+                "skeleton": [[1, 2], [2, 3], [3, 4], [4, 1]],
+            }
+        ],
     }
     (run_dir / "annotations.json").write_text(json.dumps(coco, indent=2), encoding="utf-8")
     (run_dir / "config.json").write_text(json.dumps(asdict(config), default=str, indent=2) + "\n")
