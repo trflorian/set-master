@@ -33,7 +33,7 @@ def mask_image(opencv_image):
     if save_dir is not None:
         os.makedirs(save_dir, exist_ok=True)
 
-    # sample_list = eval('ImageLoader')('images/000004.jpg', opt.Test.Dataset.transforms)
+    # sample_list = eval('ImageLoader')('images/scene_001_004.jpg', opt.Test.Dataset.transforms)
 
     custom_transforms = get_transform(opt.Test.Dataset.transforms)
 

@@ -5,9 +5,9 @@ from pathlib import Path
 
 import cv2
 import numpy as np
-from set_master.geometry import geometry_annotation
-from set_master.annotation_visualization import draw_annotation_geometry
 
+from set_master.annotation_visualization import draw_annotation_geometry
+from set_master.geometry import geometry_annotation
 from set_master.paths import (
     REAL_TESTSET_DIR,
     REFERENCE_ANNOTATIONS_PATH,
@@ -38,7 +38,7 @@ def export_testset(output_dir: Path) -> None:
         height, width = image.shape[:2]
         if (width, height) != (record["width"], record["height"]):
             raise ValueError(f"Source dimensions changed: {source}")
-        stem = f"{image_id:06d}"
+        stem = source.stem
         image_file = f"images/{stem}.jpg"
         mask_file = f"masks/{stem}.png"
         instance_file = f"instances/{stem}.png"
@@ -51,6 +51,8 @@ def export_testset(output_dir: Path) -> None:
             raise ValueError(f"Missing explicit corner annotations in {source}")
         if record.get("corner_order") != "card_relative":
             raise ValueError(f"Missing reviewed card-relative orientation in {source}")
+        if len(record["corners"]) != len(record["polygons"]):
+            raise ValueError(f"Corner and polygon counts differ in {source}")
         for instance_id, vertices in enumerate(record["polygons"], start=1):
             polygon = np.asarray(vertices, dtype=np.int32)
             if (

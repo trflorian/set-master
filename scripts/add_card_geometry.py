@@ -2,11 +2,11 @@ import argparse
 import json
 from pathlib import Path
 
-import numpy as np
 import cv2
+import numpy as np
 
-from set_master.geometry import geometry_annotation, polygon_corners
 from set_master.annotation_visualization import draw_annotation_geometry
+from set_master.geometry import geometry_annotation, polygon_corners
 
 
 def add_geometry(dataset: Path) -> None:
@@ -45,7 +45,7 @@ def add_geometry(dataset: Path) -> None:
         if image is None:
             raise FileNotFoundError(dataset / info["file_name"])
         annotations = [item for item in coco["annotations"] if item["image_id"] == info["id"]]
-        filename = f"debug/{info['id']:06d}.jpg"
+        filename = f"debug/{Path(info['file_name']).stem}.jpg"
         if not cv2.imwrite(str(dataset / filename), draw_annotation_geometry(image, annotations)):
             raise OSError(f"Could not save {filename}")
         info["debug_file"] = filename

@@ -81,8 +81,10 @@ pass and requires more activation memory than the basic semantic head.
 | `data/testset/` | Exported real evaluation data |
 | `runs/` | Checkpoints, metrics, previews, and evaluation overlays |
 
-Real labels cover fully visible face-up cards; deck tops and partial cards are
+Real labels cover fully visible face-up cards, deck tops and partial cards are
 excluded.
+Reference filenames use `scene_005_001.jpg`: the first number identifies the
+scene, and the second identifies a photo within that scene.
 
 Rebuild the real testset from the reviewed source annotations:
 

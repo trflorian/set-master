@@ -473,16 +473,14 @@ def draw_sets(card_images, sets):
 
 
 def main():
-    img_fn = "000004"
-    # img_fn = '000007'
-    # img_fn = '000008'
-    # img_fn = '000002'
-    # img_fn = '000001'
-    # img_fn = '000013'
-    # img_fn = '000011'
-    # img_fn = '000011_edit'
-    # img_fn = '000009'
-    # img_fn = '0000091small'
+    img_fn = "scene_001_004"
+    # img_fn = 'scene_001_007'
+    # img_fn = 'scene_001_008'
+    # img_fn = 'scene_001_002'
+    # img_fn = 'scene_001_001'
+    # img_fn = 'scene_004_003'
+    # img_fn = 'scene_004_001'
+    # img_fn = 'scene_002_001'
 
     lr_size = (500, 500)
 
